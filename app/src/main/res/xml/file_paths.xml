@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <!-- Only the folder the updater downloads the new APK into -->
-    <cache-path name="updates" path="apk/" />
-</paths>
