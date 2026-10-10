@@ -35,6 +35,19 @@
         <item name="colorControlActivated">?attr/cAccentText</item>
         <item name="android:textColorLink">?attr/cAccentText</item>
         <item name="android:windowAnimationStyle">@style/ActivityAnim</item>
+        <item name="android:seekBarStyle">@style/IosSeekBar</item>
+        <item name="seekBarStyle">@style/IosSeekBar</item>
+    </style>
+
+    <!-- one slider look everywhere (editors, player, settings): thin track, white iOS knob -->
+    <style name="IosSeekBar" parent="Widget.AppCompat.SeekBar">
+        <item name="android:progressDrawable">@drawable/seek_track</item>
+        <item name="android:thumb">@drawable/seek_thumb</item>
+        <item name="android:splitTrack">false</item>
+        <item name="android:minHeight">4dp</item>
+        <item name="android:maxHeight">4dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
     </style>
 
     <style name="ActivityAnim" parent="@android:style/Animation.Activity">

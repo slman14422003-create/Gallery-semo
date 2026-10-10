@@ -636,7 +636,7 @@ public class MediaGrid extends LinearLayout {
                 TextView t = new TextView(c);
                 t.setTextColor(Ui.color(c, R.color.text_primary));
                 t.setTextSize(19);
-                t.setTypeface(Typeface.DEFAULT_BOLD);
+                t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
                 t.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
                 t.setPaddingRelative(Ui.dp(c, 15), Ui.dp(c, 20), Ui.dp(c, 15), Ui.dp(c, 8));
                 t.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));

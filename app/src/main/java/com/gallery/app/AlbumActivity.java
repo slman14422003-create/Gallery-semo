@@ -9,6 +9,7 @@ public class AlbumActivity extends BaseActivity implements Library.Listener {
     private MediaGrid grid;
     private int kind;
     private long bucket;
+    private int seenVersion = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,7 +34,8 @@ public class AlbumActivity extends BaseActivity implements Library.Listener {
     protected void onStart() {
         super.onStart();
         Library.listen(this);
-        onLibraryChanged();
+        // returning from the viewer with nothing changed: keep the grid as it is (rebuilding it caused the lag)
+        if (seenVersion != Library.version) onLibraryChanged();
     }
 
     @Override
@@ -44,6 +46,7 @@ public class AlbumActivity extends BaseActivity implements Library.Listener {
 
     @Override
     public void onLibraryChanged() {
+        seenVersion = Library.version;
         grid.setSource(Library.itemsFor(this, kind, bucket));
     }
 }

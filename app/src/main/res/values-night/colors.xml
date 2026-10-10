@@ -27,4 +27,5 @@
     <color name="info">#0A84FF</color>
     <color name="violet">#BF5AF2</color>
     <color name="lime">#A2E36B</color>
+    <color name="ic_launcher_bg">#000000</color>
 </resources>

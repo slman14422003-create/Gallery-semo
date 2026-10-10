@@ -109,7 +109,7 @@ public class VideoEditorActivity extends BaseActivity {
         // header
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(Ui.dp(this, 12), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 6));
+        head.setPadding(Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 6));
         ImageButton close = new ImageButton(this, null, 0, R.style.IconButton);
         close.setImageResource(R.drawable.ic_cancel);
         close.setOnClickListener(v -> askLeave());
@@ -117,16 +117,16 @@ public class VideoEditorActivity extends BaseActivity {
         TextView title = new TextView(this);
         title.setText(R.string.edit_video);
         title.setTextColor(Ui.color(this, R.color.text_primary));
-        title.setTextSize(19);
-        title.setTypeface(android.graphics.Typeface.SERIF);
-        title.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 8), 0);
+        title.setTextSize(17);
+        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        title.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
         LinearLayout tl = new LinearLayout(this);
         tl.setGravity(Gravity.CENTER_VERTICAL);
         tl.addView(title);
         TextView beta = new TextView(this);
         beta.setText(R.string.beta);
         beta.setTextSize(10.5f);
-        beta.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        beta.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         beta.setTextColor(Ui.color(this, R.color.accent_text));
         GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(Ui.dp(this, 20));

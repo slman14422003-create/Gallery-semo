@@ -977,6 +977,22 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
 
     // ------------------------------------------------------------------ lifecycle
 
+    /** Stops the picture first (a live video surface inside a closing window is what made leaving the player stutter). */
+    @Override
+    public void finish() {
+        if (!isFinishing() && engine != null) {
+            try {
+                engine.pause();
+                saveResume();
+                View v = engine.view();
+                if (v != null) v.setVisibility(View.INVISIBLE);
+            } catch (Throwable ignored) {
+            }
+        }
+        super.finish();
+        overridePendingTransition(R.anim.hold, R.anim.viewer_close_exit);
+    }
+
     @Override
     protected void onPause() {
         super.onPause();

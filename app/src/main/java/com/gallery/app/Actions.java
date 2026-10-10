@@ -55,11 +55,13 @@ final class Actions {
     static void openViewer(Activity a, List<Media> list, int index) {
         Library.setSession(list, index);
         a.startActivity(new Intent(a, ViewerActivity.class));
+        a.overridePendingTransition(R.anim.viewer_open_enter, R.anim.hold);
     }
 
     static void play(Activity a, List<Media> list, int index) {
         Library.setSession(list, index);
         a.startActivity(new Intent(a, PlayerActivity.class));
+        a.overridePendingTransition(R.anim.viewer_open_enter, R.anim.hold);
     }
 
     static void edit(Activity a, Media m) {

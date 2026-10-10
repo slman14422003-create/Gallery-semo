@@ -32,6 +32,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     private int tab = NavBar.PHOTOS;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private View shown;   // the tab currently on screen
+    private int seenVersion = -1;   // Library.version the grids were last filled from
+    private final Runnable syncRun = this::onLibraryChanged;
     /** One shared worker for the update check (a new executor per screen leaked a thread every time). */
     private static final ExecutorService UPDATE_IO = Executors.newSingleThreadExecutor();
 
@@ -130,6 +132,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
 
     @Override
     protected void onDestroy() {
+        ui.removeCallbacks(syncRun);
         Library.unlisten(this);
         super.onDestroy();
     }
@@ -194,7 +197,14 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         permView.setVisibility(ok ? View.GONE : View.VISIBLE);
         if (ok) {
             if (!Library.loaded) Library.reload(this);
-            onLibraryChanged();
+            ui.removeCallbacks(syncRun);
+            if (seenVersion < 0) {
+                onLibraryChanged();   // first fill
+            } else if (seenVersion != Library.version) {
+                // coming back from the viewer / editor with something changed: wait for the close animation to
+                // finish, otherwise rebuilding the grids drops frames right when the screen is sliding back in
+                ui.postDelayed(syncRun, 400);
+            }
         }
     }
 
@@ -205,6 +215,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
 
     @Override
     public void onLibraryChanged() {
+        seenVersion = Library.version;
         photos.setSource(Library.all);
         search.setSource(Library.all);
         albums.refresh();
@@ -232,7 +243,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         t.setText(R.string.access_title);
         t.setTextColor(Ui.color(this, R.color.text_primary));
         t.setTextSize(22);
-        t.setTypeface(android.graphics.Typeface.SERIF);
+        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         t.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2);
         tp.topMargin = Ui.dp(this, 22);

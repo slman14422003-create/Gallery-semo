@@ -143,8 +143,8 @@ public class Dlg extends AlertDialog.Builder {
         TextView t = new TextView(c);
         t.setText(title);
         t.setTextColor(Ui.color(c, R.color.text_primary));
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -175,7 +175,7 @@ public class Dlg extends AlertDialog.Builder {
         TextView title = d.findViewById(androidx.appcompat.R.id.alertTitle);
         if (title != null) {
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-            title.setTypeface(Typeface.DEFAULT_BOLD);
+            title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             title.setTextColor(Ui.color(c, R.color.text_primary));
             title.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
             title.setGravity(Gravity.CENTER_HORIZONTAL);

@@ -29,6 +29,8 @@ public final class Library {
 
     public static volatile List<Media> all = new ArrayList<>();
     public static volatile boolean loaded = false;
+    /** Bumped whenever the library list or the favourites change, so screens can skip rebuilding when nothing happened. */
+    public static volatile int version = 0;
 
     /** The list the viewer / player pages through, and where it starts. */
     public static List<Media> session = new ArrayList<>();
@@ -61,6 +63,7 @@ public final class Library {
             MAIN.post(() -> {
                 all = r;
                 loaded = true;
+                version++;
                 for (Listener l : LISTENERS) l.onLibraryChanged();
             });
         });
@@ -117,6 +120,7 @@ public final class Library {
             now = true;
         }
         Store.setFavorites(c, FAVS);
+        version++;
         return now;
     }
 
@@ -128,6 +132,7 @@ public final class Library {
             else FAVS.remove(m.key());
         }
         Store.setFavorites(c, FAVS);
+        version++;
         return on;
     }
 

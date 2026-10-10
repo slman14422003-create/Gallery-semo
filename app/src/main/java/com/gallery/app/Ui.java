@@ -53,6 +53,11 @@ public final class Ui {
         return (int) (v * c.getResources().getDisplayMetrics().density);
     }
 
+    /** Same as {@link #dp(Context, int)} but keeps fractions (hairlines, 3.5dp strokes). */
+    public static float dpf(Context c, float v) {
+        return v * c.getResources().getDisplayMetrics().density;
+    }
+
     /**
      * Colour by resource id. The accent family follows the user's colour theme (resolved through the
      * context's theme); every other colour comes from the day / night resources.
@@ -423,20 +428,20 @@ public final class Ui {
         box.setGravity(Gravity.CENTER_HORIZONTAL);
         box.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 6));
         ImageView icon = new ImageView(c);
-        icon.setImageResource(R.drawable.ic_image);
-        icon.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
-        int p = dp(c, 18);
-        icon.setPadding(p, p, p, p);
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF5AC8FA, 0xFF007AFF, 0xFF5856D6});
+        icon.setImageResource(R.drawable.ic_brand_mark);   // the blue flower, same as the launcher icon
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xFFFFFFFF, 0xFFEAF3FF});
         g.setCornerRadius(dp(c, 20));
+        g.setStroke(1, 0x14000000);
         icon.setBackground(g);
-        box.addView(icon, new LinearLayout.LayoutParams(dp(c, 76), dp(c, 76)));
+        icon.setClipToOutline(true);
+        box.addView(icon, new LinearLayout.LayoutParams(dp(c, 84), dp(c, 84)));
         TextView n = new TextView(c);
         n.setText(name);
         n.setTextColor(color(c, R.color.text_primary));
-        n.setTextSize(21);
-        n.setTypeface(Typeface.DEFAULT_BOLD);
+        n.setTextSize(22);
+        n.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         n.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-2, -2);
         np.topMargin = dp(c, 12);

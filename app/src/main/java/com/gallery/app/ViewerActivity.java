@@ -169,6 +169,12 @@ public class ViewerActivity extends BaseActivity {
         if (adapter != null && !list.isEmpty()) updateChrome();
     }
 
+    @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(R.anim.hold, R.anim.viewer_close_exit);
+    }
+
     private Media cur() {
         return list.get(Math.max(0, Math.min(current, list.size() - 1)));
     }
@@ -308,7 +314,7 @@ public class ViewerActivity extends BaseActivity {
                 h.play.setVisibility(View.GONE);
                 h.photo.setVisibility(View.VISIBLE);
                 Glide.with(h.itemView).load(m.uri)
-                        .override(3072, 3072)
+                        .override(2560, 2560)
                         .downsample(DownsampleStrategy.AT_MOST)
                         .signature(new ObjectKey(m.modified + ":" + m.size))
                         .thumbnail(0.2f)

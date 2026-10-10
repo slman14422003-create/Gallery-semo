@@ -7,7 +7,6 @@ import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
-import android.graphics.Typeface;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -36,6 +35,11 @@ final class EditorView extends View {
     private float brushWidth = 0.012f;
     private EditState.Stroke live;
     private EditState.Label active;
+    static final int ERASER = -1;
+    private int tool = EditState.PEN;            // pen / marker / shapes / ERASER
+    private boolean eraseBegan;
+    private Bitmap plain;                        // the picture without colour edits and overlays (hold to compare)
+    private boolean showOriginal;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final float touch;
@@ -51,7 +55,12 @@ final class EditorView extends View {
     }
 
     void set(Bitmap b, EditState s) {
+        set(b, s, null);
+    }
+
+    void set(Bitmap b, EditState s, Bitmap original) {
         bmp = b;
+        plain = original;
         st = s;
         layoutDst();
         if (mode == CROP) cropFromState();
@@ -62,6 +71,16 @@ final class EditorView extends View {
         mode = m;
         active = null;
         if (m == CROP && st != null && dst.width() > 0) cropFromState();
+        invalidate();
+    }
+
+    void setTool(int t) {
+        tool = t;
+    }
+
+    /** While held, the picture shows without any edits so the effect can be compared. */
+    void showOriginal(boolean on) {
+        showOriginal = on && plain != null;
         invalidate();
     }
 
@@ -125,6 +144,10 @@ final class EditorView extends View {
     @Override
     protected void onDraw(Canvas c) {
         if (bmp == null) return;
+        if (showOriginal && plain != null) {
+            c.drawBitmap(plain, null, dst, paint);
+            return;
+        }
         c.drawBitmap(bmp, null, dst, paint);
         if (mode == CROP) {
             paint.setColor(0x99000000);
@@ -133,21 +156,42 @@ final class EditorView extends View {
             c.drawRect(dst.left, crop.bottom, dst.right, dst.bottom, paint);
             c.drawRect(dst.left, crop.top, crop.left, crop.bottom, paint);
             c.drawRect(crop.right, crop.top, dst.right, crop.bottom, paint);
-            line.setColor(0xFFFFFFFF);
-            line.setStrokeWidth(Ui.dp(getContext(), 2));
             line.setPathEffect(null);
-            c.drawRect(crop, line);
-            line.setColor(0x66FFFFFF);
+            line.setStrokeCap(Paint.Cap.BUTT);
+            line.setColor(0xCCFFFFFF);
             line.setStrokeWidth(Ui.dp(getContext(), 1));
-            for (int i = 1; i < 3; i++) {
-                c.drawLine(crop.left + crop.width() * i / 3f, crop.top, crop.left + crop.width() * i / 3f, crop.bottom, line);
-                c.drawLine(crop.left, crop.top + crop.height() * i / 3f, crop.right, crop.top + crop.height() * i / 3f, line);
+            c.drawRect(crop, line);
+            if (drag != 0) {   // the thirds grid only appears while a handle is being dragged (like iOS Photos)
+                line.setColor(0x80FFFFFF);
+                line.setStrokeWidth(Ui.dp(getContext(), 1) * 0.6f);
+                for (int i = 1; i < 3; i++) {
+                    c.drawLine(crop.left + crop.width() * i / 3f, crop.top, crop.left + crop.width() * i / 3f, crop.bottom, line);
+                    c.drawLine(crop.left, crop.top + crop.height() * i / 3f, crop.right, crop.top + crop.height() * i / 3f, line);
+                }
             }
-            paint.setColor(0xFFFFFFFF);
-            float r = Ui.dp(getContext(), 7);
-            float[][] pts = {{crop.left, crop.top}, {crop.right, crop.top}, {crop.left, crop.bottom}, {crop.right, crop.bottom}};
-            for (float[] p : pts) c.drawCircle(p[0], p[1], r, paint);
-            paint.setStyle(Paint.Style.FILL);
+            // thick corner brackets and short edge bars
+            float sw = Ui.dpf(getContext(), 3.5f);
+            float len = Math.min(Ui.dp(getContext(), 22), Math.min(crop.width(), crop.height()) / 3f);
+            line.setColor(0xFFFFFFFF);
+            line.setStrokeWidth(sw);
+            line.setStrokeCap(Paint.Cap.SQUARE);
+            float o = sw / 2f;
+            c.drawLine(crop.left - o, crop.top, crop.left + len, crop.top, line);
+            c.drawLine(crop.left, crop.top - o, crop.left, crop.top + len, line);
+            c.drawLine(crop.right + o, crop.top, crop.right - len, crop.top, line);
+            c.drawLine(crop.right, crop.top - o, crop.right, crop.top + len, line);
+            c.drawLine(crop.left - o, crop.bottom, crop.left + len, crop.bottom, line);
+            c.drawLine(crop.left, crop.bottom + o, crop.left, crop.bottom - len, line);
+            c.drawLine(crop.right + o, crop.bottom, crop.right - len, crop.bottom, line);
+            c.drawLine(crop.right, crop.bottom + o, crop.right, crop.bottom - len, line);
+            if (aspect == 0) {
+                float half = len / 2f;
+                c.drawLine(crop.centerX() - half, crop.top, crop.centerX() + half, crop.top, line);
+                c.drawLine(crop.centerX() - half, crop.bottom, crop.centerX() + half, crop.bottom, line);
+                c.drawLine(crop.left, crop.centerY() - half, crop.left, crop.centerY() + half, line);
+                c.drawLine(crop.right, crop.centerY() - half, crop.right, crop.centerY() + half, line);
+            }
+            line.setStrokeCap(Paint.Cap.BUTT);
             return;
         }
         // overlays live in the picture's coordinates
@@ -162,15 +206,13 @@ final class EditorView extends View {
         }
         c.restoreToCount(save);
         if (mode == TEXT && active != null && !active.text.isEmpty()) {
-            Paint t = new Paint(Paint.ANTI_ALIAS_FLAG);
-            t.setTextSize(active.size * h);
-            t.setTypeface(Typeface.DEFAULT_BOLD);
-            float tw = t.measureText(active.text), th = active.size * h;
-            float cx = dst.left + active.x * w, cy = dst.top + active.y * h;
+            RectF b = Renderer.labelBounds(active, w, h);
+            b.offset(dst.left, dst.top);
+            b.inset(-Ui.dp(getContext(), 4), -Ui.dp(getContext(), 2));
             line.setColor(0xFFFFFFFF);
-            line.setStrokeWidth(Ui.dp(getContext(), 1) * 1.5f);
+            line.setStrokeWidth(Ui.dpf(getContext(), 1.5f));
             line.setPathEffect(new DashPathEffect(new float[]{14, 10}, 0));
-            c.drawRect(cx - tw / 2 - 12, cy - th * 0.7f, cx + tw / 2 + 12, cy + th * 0.55f, line);
+            c.drawRoundRect(b, Ui.dp(getContext(), 8), Ui.dp(getContext(), 8), line);
             line.setPathEffect(null);
         }
     }
@@ -217,6 +259,7 @@ final class EditorView extends View {
                 lx = x;
                 ly = y;
                 if (drag != 0 && listener != null) listener.onBegin();
+                invalidate();
                 return drag != 0;
             case MotionEvent.ACTION_MOVE:
                 if (drag == 0) return false;
@@ -252,6 +295,7 @@ final class EditorView extends View {
             case MotionEvent.ACTION_CANCEL:
                 if (drag != 0 && listener != null) listener.onCommit();
                 drag = 0;
+                invalidate();
                 return true;
             default:
                 return true;
@@ -260,11 +304,13 @@ final class EditorView extends View {
 
     private boolean touchDraw(MotionEvent e, float x, float y) {
         float nx = (x - dst.left) / dst.width(), ny = (y - dst.top) / dst.height();
+        if (tool == ERASER) return touchErase(e, x, y);
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 if (!dst.contains(x, y)) return false;
                 if (listener != null) listener.onBegin();
                 live = new EditState.Stroke();
+                live.type = tool;
                 live.color = brushColor;
                 live.width = brushWidth;
                 live.pts.add(new float[]{nx, ny});
@@ -272,13 +318,23 @@ final class EditorView extends View {
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (live == null) return false;
-                live.pts.add(new float[]{Math.max(0, Math.min(1, nx)), Math.max(0, Math.min(1, ny))});
+                float cx = Math.max(0, Math.min(1, nx)), cy = Math.max(0, Math.min(1, ny));
+                if (tool >= EditState.LINE) {
+                    // shapes only need the start and the current end point
+                    if (live.pts.size() > 1) live.pts.set(1, new float[]{cx, cy});
+                    else live.pts.add(new float[]{cx, cy});
+                } else {
+                    float[] last = live.pts.get(live.pts.size() - 1);
+                    float dx = (cx - last[0]) * dst.width(), dy = (cy - last[1]) * dst.height();
+                    if (dx * dx + dy * dy >= 4f) live.pts.add(new float[]{cx, cy});   // skip sub-2px jitter
+                }
                 invalidate();
                 return true;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 if (live != null) {
-                    st.strokes.add(live);
+                    boolean keep = e.getActionMasked() == MotionEvent.ACTION_UP && (tool < EditState.LINE || live.pts.size() > 1);
+                    if (keep) st.strokes.add(live);
                     live = null;
                     if (listener != null) listener.onCommit();
                     invalidate();
@@ -289,16 +345,75 @@ final class EditorView extends View {
         }
     }
 
+    /** Eraser: removes every stroke / shape the finger touches. */
+    private boolean touchErase(MotionEvent e, float x, float y) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                eraseBegan = false;
+                eraseAt(x, y);
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                eraseAt(x, y);
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (eraseBegan && listener != null) listener.onCommit();
+                eraseBegan = false;
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void eraseAt(float x, float y) {
+        float w = dst.width(), h = dst.height();
+        float reach = Ui.dp(getContext(), 16);
+        for (int i = st.strokes.size() - 1; i >= 0; i--) {
+            EditState.Stroke k = st.strokes.get(i);
+            if (!strokeHit(k, x, y, w, h, reach)) continue;
+            if (!eraseBegan) {
+                eraseBegan = true;
+                if (listener != null) listener.onBegin();   // undo step is taken before the first removal
+            }
+            st.strokes.remove(i);
+            invalidate();
+        }
+    }
+
+    private boolean strokeHit(EditState.Stroke k, float x, float y, float w, float h, float reach) {
+        float r = reach + k.width * w / 2f;
+        if (k.type >= EditState.LINE && k.pts.size() > 1) {
+            float[] a = k.pts.get(0), b = k.pts.get(1);
+            float ax = dst.left + a[0] * w, ay = dst.top + a[1] * h, bx = dst.left + b[0] * w, by = dst.top + b[1] * h;
+            if (k.type == EditState.LINE || k.type == EditState.ARROW) return segDist(x, y, ax, ay, bx, by) < r;
+            return x > Math.min(ax, bx) - r && x < Math.max(ax, bx) + r && y > Math.min(ay, by) - r && y < Math.max(ay, by) + r;
+        }
+        if (k.type == EditState.MARKER) r += k.width * w * 0.8f;
+        for (int i = 0; i < k.pts.size(); i++) {
+            float[] p = k.pts.get(i);
+            float px = dst.left + p[0] * w, py = dst.top + p[1] * h;
+            if (i == 0 ? Math.hypot(x - px, y - py) < r : segDist(x, y, dst.left + k.pts.get(i - 1)[0] * w,
+                    dst.top + k.pts.get(i - 1)[1] * h, px, py) < r) return true;
+        }
+        return false;
+    }
+
+    private static float segDist(float px, float py, float ax, float ay, float bx, float by) {
+        float dx = bx - ax, dy = by - ay;
+        float len2 = dx * dx + dy * dy;
+        float t = len2 == 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+        return (float) Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    }
+
     private EditState.Label labelAt(float x, float y) {
         float w = dst.width(), h = dst.height();
-        Paint t = new Paint(Paint.ANTI_ALIAS_FLAG);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
+        float slop = Ui.dp(getContext(), 10);
         for (int i = st.labels.size() - 1; i >= 0; i--) {
             EditState.Label l = st.labels.get(i);
-            t.setTextSize(l.size * h);
-            float tw = t.measureText(l.text) / 2 + 24, th = l.size * h * 0.75f + 16;
-            float cx = dst.left + l.x * w, cy = dst.top + l.y * h;
-            if (Math.abs(x - cx) < tw && Math.abs(y - cy) < th) return l;
+            RectF b = Renderer.labelBounds(l, w, h);
+            b.offset(dst.left, dst.top);
+            b.inset(-slop, -slop);
+            if (b.contains(x, y)) return l;
         }
         return null;
     }
