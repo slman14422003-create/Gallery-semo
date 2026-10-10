@@ -35,6 +35,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * The photo grid: date sections, pinch to change the column count, long-press multi-select with
@@ -43,6 +45,10 @@ import java.util.Set;
  */
 public class MediaGrid extends LinearLayout {
     public static final int PHOTOS = 0, ALBUM = 1, SEARCH = 2;
+    /** Filtering + sorting + grouping thousands of items ran on the UI thread right as the viewer / editor
+     *  closed, which is exactly when a dropped frame is most visible; one shared background thread now does
+     *  that work for every grid (Photos, Search, every album) while the UI stays responsive. */
+    private static final ExecutorService BG = Executors.newSingleThreadExecutor();
 
     private final BaseActivity act;
     private final int mode;
@@ -74,6 +80,8 @@ public class MediaGrid extends LinearLayout {
     private Runnable onBack;
     private final List<TextView> chips = new ArrayList<>();
     private boolean built;                       // the list has been filled at least once
+    private int rebuildGen;                       // bumps on every rebuild(); a background pass that finishes
+                                                    // after a newer one started is discarded instead of applied
     private final Runnable applyQuery = () -> rebuild(false);
 
     public MediaGrid(BaseActivity a, int mode) {
@@ -357,16 +365,18 @@ public class MediaGrid extends LinearLayout {
         ad.notifyDataSetChanged();
     }
 
-    private boolean matches(Media m) {
-        if (filter == 1 && m.video) return false;
-        if (filter == 2 && !m.video) return false;
-        if (filter == 3 && !Library.isFav(act, m)) return false;
-        if (!query.isEmpty()) {
+    /** {@code f}/{@code q} are a snapshot taken before the (possibly background) rebuild pass started,
+     *  so this never reads the live {@link #filter} / {@link #query} fields while they could be changing. */
+    private boolean matches(Media m, int f, String q) {
+        if (f == 1 && m.video) return false;
+        if (f == 2 && !m.video) return false;
+        if (f == 3 && !Library.isFav(act, m)) return false;
+        if (!q.isEmpty()) {
             String hay = (m.name + " " + m.bucket + " " + m.mime + " "
                     + (m.video ? "video فيديو mp4" : "image photo صورة") + (m.isGif() ? " gif" : "") + " "
                     + new SimpleDateFormat("yyyy MMMM MM-dd", Locale.getDefault()).format(new Date(m.date())))
                     .toLowerCase(Locale.getDefault());
-            for (String tok : query.split("\\s+")) if (!hay.contains(tok)) return false;
+            for (String tok : q.toLowerCase(Locale.getDefault()).split("\\s+")) if (!hay.contains(tok)) return false;
         }
         return true;
     }
@@ -375,67 +385,74 @@ public class MediaGrid extends LinearLayout {
         rebuild(false);
     }
 
-    /** {@code diff}: animate only what changed (library reloads) instead of redrawing the whole grid. */
+    /** {@code diff}: animate only what changed (library reloads) instead of redrawing the whole grid.
+     *  The filter / sort / group pass (and the DiffUtil comparison for a library reload) run on a
+     *  background thread; only applying the finished result to the adapter happens on the UI thread,
+     *  so a large library no longer drops frames right when a screen closes back into the grid. */
     private void rebuild(boolean diff) {
-        final List<Object> old = diff ? new ArrayList<Object>(items) : null;
-        shown.clear();
-        items.clear();
-        boolean needQuery = mode == SEARCH && query.isEmpty();
-        if (!needQuery) {
-            for (Media m : source) if (matches(m)) shown.add(m);
-        }
-        final boolean byAdded = Store.intPref(act, "sort", 0) == 1;
-        if (byAdded) {
-            Collections.sort(shown, (a, b) -> Long.compare(Math.max(b.added, 0), Math.max(a.added, 0)));
-        } else {
-            Collections.sort(shown, (a, b) -> Long.compare(b.date(), a.date()));
-        }
-        int gm = Store.intPref(act, "group", 1);
-        String last = null;
-        for (Media m : shown) {
-            if (gm != 0) {
-                long t = byAdded && m.added > 0 ? m.added * 1000L : m.date();
-                String h = header(t, gm);
-                if (!h.equals(last)) {
-                    items.add(h);
-                    last = h;
-                }
-            }
-            items.add(m);
-        }
-        built = true;
-        if (old != null && !old.isEmpty() && !items.isEmpty() && old.size() + items.size() < 30000) {
-            DiffUtil.DiffResult r = DiffUtil.calculateDiff(new DiffUtil.Callback() {
-                @Override
-                public int getOldListSize() {
-                    return old.size();
-                }
-
-                @Override
-                public int getNewListSize() {
-                    return items.size();
-                }
-
-                @Override
-                public boolean areItemsTheSame(int o, int n) {
-                    Object x = old.get(o), y = items.get(n);
-                    if (x instanceof Media) return y instanceof Media && ((Media) x).key().equals(((Media) y).key());
-                    return x instanceof String && x.equals(y);
-                }
-
-                @Override
-                public boolean areContentsTheSame(int o, int n) {
-                    Object x = old.get(o), y = items.get(n);
-                    if (!(x instanceof Media) || !(y instanceof Media)) return true;
-                    Media a = (Media) x, b = (Media) y;
-                    return a.modified == b.modified && a.size == b.size && a.duration == b.duration && a.name.equals(b.name);
-                }
-            }, false);
-            r.dispatchUpdatesTo(ad);
-            refreshMarks();
-        } else {
+        final int gen = ++rebuildGen;
+        final boolean needQuery = mode == SEARCH && query.isEmpty();
+        if (needQuery) {
+            // Nothing to compute: empty "type to search" state, cheap enough to do inline.
+            shown.clear();
+            items.clear();
+            built = true;
             ad.notifyDataSetChanged();
+            applyEmptyState(true);
+            return;
         }
+        final List<Object> old = diff ? new ArrayList<Object>(items) : null;
+        final List<Media> srcSnapshot = new ArrayList<>(source);
+        final int f = filter;
+        final String q = query;
+        final boolean byAdded = Store.intPref(act, "sort", 0) == 1;
+        final int gm = Store.intPref(act, "group", 1);
+
+        BG.execute(() -> {
+            List<Media> newShown = new ArrayList<>();
+            for (Media m : srcSnapshot) if (matches(m, f, q)) newShown.add(m);
+            if (byAdded) {
+                Collections.sort(newShown, (a, b) -> Long.compare(Math.max(b.added, 0), Math.max(a.added, 0)));
+            } else {
+                Collections.sort(newShown, (a, b) -> Long.compare(b.date(), a.date()));
+            }
+            List<Object> newItems = new ArrayList<>();
+            String last = null;
+            for (Media m : newShown) {
+                if (gm != 0) {
+                    long t = byAdded && m.added > 0 ? m.added * 1000L : m.date();
+                    String h = header(t, gm);
+                    if (!h.equals(last)) {
+                        newItems.add(h);
+                        last = h;
+                    }
+                }
+                newItems.add(m);
+            }
+            DiffUtil.DiffResult diffResult = null;
+            if (old != null && !old.isEmpty() && !newItems.isEmpty() && old.size() + newItems.size() < 30000) {
+                diffResult = DiffUtil.calculateDiff(new DiffCb(old, newItems), false);
+            }
+            final DiffUtil.DiffResult finalDiff = diffResult;
+            act.runOnUiThread(() -> {
+                if (gen != rebuildGen) return;   // superseded by a newer rebuild; drop this result
+                shown.clear();
+                shown.addAll(newShown);
+                items.clear();
+                items.addAll(newItems);
+                built = true;
+                if (finalDiff != null) {
+                    finalDiff.dispatchUpdatesTo(ad);
+                    refreshMarks();
+                } else {
+                    ad.notifyDataSetChanged();
+                }
+                applyEmptyState(false);
+            });
+        });
+    }
+
+    private void applyEmptyState(boolean needQuery) {
         boolean empty = shown.isEmpty();
         boolean loading = !Library.loaded && mode != SEARCH;
         emptyView.setVisibility(empty && !loading ? VISIBLE : GONE);
@@ -443,6 +460,40 @@ public class MediaGrid extends LinearLayout {
         if (needQuery) emptyText.setText(R.string.search_start);
         else emptyText.setText(source.isEmpty() ? R.string.empty_library : R.string.empty_filter);
         updateHeader();
+    }
+
+    private static final class DiffCb extends DiffUtil.Callback {
+        private final List<Object> old, next;
+
+        DiffCb(List<Object> old, List<Object> next) {
+            this.old = old;
+            this.next = next;
+        }
+
+        @Override
+        public int getOldListSize() {
+            return old.size();
+        }
+
+        @Override
+        public int getNewListSize() {
+            return next.size();
+        }
+
+        @Override
+        public boolean areItemsTheSame(int o, int n) {
+            Object x = old.get(o), y = next.get(n);
+            if (x instanceof Media) return y instanceof Media && ((Media) x).key().equals(((Media) y).key());
+            return x instanceof String && x.equals(y);
+        }
+
+        @Override
+        public boolean areContentsTheSame(int o, int n) {
+            Object x = old.get(o), y = next.get(n);
+            if (!(x instanceof Media) || !(y instanceof Media)) return true;
+            Media a = (Media) x, b = (Media) y;
+            return a.modified == b.modified && a.size == b.size && a.duration == b.duration && a.name.equals(b.name);
+        }
     }
 
     private String header(long t, int gm) {

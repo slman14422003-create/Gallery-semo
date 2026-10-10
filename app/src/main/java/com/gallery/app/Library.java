@@ -42,7 +42,9 @@ public final class Library {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final AtomicInteger GEN = new AtomicInteger();
-    private static final Set<String> FAVS = new HashSet<>();
+    // synchronized: read from the grid's background rebuild thread (favourites filter / marks) while the
+    // UI thread may be adding to or removing from it at the same time (toggling a favourite).
+    private static final Set<String> FAVS = java.util.Collections.synchronizedSet(new HashSet<>());
     private static boolean favLoaded = false;
     private static boolean watching = false;
 

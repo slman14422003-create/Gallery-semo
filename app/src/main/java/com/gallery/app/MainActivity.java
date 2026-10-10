@@ -33,6 +33,9 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private View shown;   // the tab currently on screen
     private int seenVersion = -1;   // Library.version the grids were last filled from
+    // Each tab is only rebuilt once it is actually shown; returning from the viewer with a single
+    // favourite toggled no longer re-filters + re-sorts + re-groups all three tabs in one frame.
+    private final int[] filledVersion = {-1, -1, -1};
     private final Runnable syncRun = this::onLibraryChanged;
     /** One shared worker for the update check (a new executor per screen leaked a thread every time). */
     private static final ExecutorService UPDATE_IO = Executors.newSingleThreadExecutor();
@@ -148,6 +151,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         final View prev = shown;
         final int old = tab;
         tab = idx;
+        if (seenVersion >= 0 && filledVersion[idx] != seenVersion) fillTab(idx);
         if (nav != null) nav.render(idx);
         if (prev != next) {
             for (View v : new View[]{photos, albums, search}) {
@@ -201,9 +205,11 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             if (seenVersion < 0) {
                 onLibraryChanged();   // first fill
             } else if (seenVersion != Library.version) {
-                // coming back from the viewer / editor with something changed: wait for the close animation to
-                // finish, otherwise rebuilding the grids drops frames right when the screen is sliding back in
-                ui.postDelayed(syncRun, 400);
+                // coming back from the viewer / editor with something changed: wait for the close animation
+                // (190ms) to finish before touching the grid. The filter/sort/group/diff pass itself now runs
+                // on a background thread (see MediaGrid.rebuild), so this only needs to clear the animation,
+                // not also cover the rebuild time the way the old fixed 400ms guess had to.
+                ui.postDelayed(syncRun, 220);
             }
         }
     }
@@ -216,9 +222,17 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     @Override
     public void onLibraryChanged() {
         seenVersion = Library.version;
-        photos.setSource(Library.all);
-        search.setSource(Library.all);
-        albums.refresh();
+        // Only the tab the user is actually looking at needs to be rebuilt right now; the other two
+        // are marked stale and will catch up the moment showTab() brings them on screen, so a return
+        // from the viewer never pays for rebuilding tabs the user can't see yet.
+        fillTab(tab);
+    }
+
+    private void fillTab(int idx) {
+        if (idx == NavBar.PHOTOS) photos.setSource(Library.all);
+        else if (idx == NavBar.SEARCH) search.setSource(Library.all);
+        else if (idx == NavBar.ALBUMS) albums.refresh();
+        if (idx >= 0 && idx < filledVersion.length) filledVersion[idx] = seenVersion;
     }
 
     private View buildPermView() {

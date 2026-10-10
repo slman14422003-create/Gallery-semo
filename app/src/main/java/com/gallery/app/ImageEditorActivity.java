@@ -32,8 +32,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Photo editor (beta 2): crop, straighten and rotate, light and colour (exposure, tint, fade, sharpen, grain...),
- * 14 filters with intensity, drawing (pen, marker, shapes, eraser) and styled text. Saves a copy; the original is never touched.
+ * Photo editor (beta 3): crop, straighten and rotate, light and colour (exposure, tint, fade, sharpen,
+ * denoise, grain...), 14 filters with intensity, drawing (pen, marker, shapes, eraser), styled text, and a
+ * one-tap local AI enhance (see {@link AutoEnhance}) that reads the photo itself — no model download, no
+ * network call, ever. Saves a copy; the original is never touched.
  */
 public class ImageEditorActivity extends BaseActivity implements EditorView.Listener {
     private static final int[] COLORS = {0xFFFFFFFF, 0xFF111111, 0xFFFF3B30, 0xFFFF9500, 0xFFFFD60A, 0xFF34C759, 0xFF0A84FF, 0xFFBF5AF2, 0xFFFF2D92};
@@ -264,7 +266,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
 
     private TextView betaBadge() {
         TextView b = new TextView(this);
-        b.setText(R.string.beta2);
+        b.setText(R.string.beta3);
         b.setTextSize(10.5f);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         b.setTextColor(Ui.color(this, R.color.accent_text));
@@ -485,11 +487,10 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(Ui.dp(this, 16), Ui.dp(this, 2), Ui.dp(this, 16), Ui.dp(this, 4));
         LinearLayout top = row();
-        TextView auto = Ui.chip(this, "✦  " + getString(R.string.ad_auto), false);
+        TextView auto = Ui.chip(this, "✨  " + getString(R.string.ad_auto), false);
         auto.setOnClickListener(v -> {
             push();
-            autoEnhance();
-            selectTab(1);
+            autoEnhance();   // runs the local AI pass on a worker thread; refreshes the panel itself when done
         });
         top.addView(auto);
         TextView reset = Ui.chip(this, getString(R.string.ad_reset), false);
@@ -511,6 +512,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         slider(box, R.string.ad_tint, st.tint, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.tint = v);
         slider(box, R.string.ad_fade, st.fade, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.fade = v);
         slider(box, R.string.ad_sharpen, st.sharpen, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.sharpen = v);
+        slider(box, R.string.ad_denoise, st.denoise, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.denoise = v);
         slider(box, R.string.ad_grain, st.grain, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.grain = v);
         slider(box, R.string.ad_vignette, st.vignette, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.vignette = v);
         sv.addView(box);
@@ -518,26 +520,41 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         return sv;
     }
 
-    /** One-tap "make it look right": brightness and contrast from the picture's own histogram, a touch of colour and sharpness. */
+    /**
+     * Local AI (beta 3) — one tap reads the picture's own pixels (light, colour cast, how soft or grainy it
+     * is) and sets exposure, contrast, white balance, sharpen and denoise the way a person would drag them
+     * by hand. The analysis itself runs on {@link #worker} so a big photo never drops a frame; nothing here
+     * ever touches the network. See {@link AutoEnhance} for the actual statistics.
+     */
     private void autoEnhance() {
-        int w = 64, h = Math.max(1, 64 * preview.getHeight() / Math.max(1, preview.getWidth()));
-        Bitmap s = Bitmap.createScaledBitmap(preview, w, h, true);
-        int[] px = new int[w * h];
-        s.getPixels(px, 0, w, 0, 0, w, h);
-        double sum = 0, sum2 = 0;
-        for (int p : px) {
-            double y = 0.299 * ((p >> 16) & 255) + 0.587 * ((p >> 8) & 255) + 0.114 * (p & 255);
-            sum += y;
-            sum2 += y * y;
-        }
-        double mean = sum / px.length;
-        double sd = Math.sqrt(Math.max(1.0, sum2 / px.length - mean * mean));
-        st.exposure = 0f;
-        st.brightness = (float) Math.max(-0.3, Math.min(0.3, (120 - mean) * 0.5 / 90.0));
-        float f = (float) Math.max(0.9, Math.min(1.35, 58.0 / sd));
-        st.contrast = Math.max(-0.4f, Math.min(0.4f, (f - 1f) / 0.8f));
-        st.saturation = Math.max(st.saturation, 0.12f);
-        st.sharpen = Math.max(st.sharpen, 0.2f);
+        if (preview == null) return;
+        final Bitmap snapshot = preview;
+        spinner.setVisibility(View.VISIBLE);
+        worker.execute(() -> {
+            final AutoEnhance.Result r;
+            try {
+                r = AutoEnhance.analyze(snapshot);
+            } catch (Throwable t) {
+                runOnUiThread(() -> spinner.setVisibility(View.GONE));
+                return;
+            }
+            runOnUiThread(() -> {
+                if (isDestroyed() || preview != snapshot) {
+                    spinner.setVisibility(View.GONE);
+                    return;   // the photo changed (or the screen closed) while this was analysing
+                }
+                st.exposure = 0f;
+                st.brightness = r.brightness;
+                st.contrast = r.contrast;
+                st.saturation = Math.max(st.saturation, r.saturation);
+                st.warmth = r.warmth;
+                st.tint = r.tint;
+                st.sharpen = Math.max(st.sharpen, r.sharpen);
+                st.denoise = Math.max(st.denoise, r.denoise);
+                spinner.setVisibility(View.GONE);
+                selectTab(1);
+            });
+        });
     }
 
     private interface FloatCb {

@@ -178,6 +178,7 @@ final class Renderer {
         if (tone) p.setColorFilter(new ColorMatrixColorFilter(matrix(s)));
         c.drawBitmap(src, 0, 0, p);
         float w = out.getWidth(), h = out.getHeight();
+        if (s.denoise > 0.01f) denoise(out, s.denoise);
         if (s.sharpen > 0.01f) sharpen(out, s.sharpen);
         if (s.vignette > 0) {
             float r = (float) Math.hypot(w, h) / 2f;
@@ -213,6 +214,48 @@ final class Renderer {
         g.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.OVERLAY));
         g.setAlpha(Math.round(Math.min(1f, amount) * 255));
         c.drawRect(0, 0, w, h, g);
+    }
+
+    /**
+     * Local AI (beta 3) — noise reduction: a 3x3 box blur blended back with the original pixel by
+     * {@code amount}, row by row like {@link #sharpen}. Cheap enough to run on every preview frame and,
+     * mixed instead of applied at full strength, it smooths sensor grain without turning real detail to
+     * mush. Entirely on-device, no model file, no network.
+     */
+    static void denoise(Bitmap bmp, float amount) {
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        if (w < 3 || h < 3) return;
+        float a = Math.min(1f, amount);
+        int[] prev = new int[w], cur = new int[w], next = new int[w], out = new int[w];
+        bmp.getPixels(prev, 0, w, 0, 0, w, 1);
+        bmp.getPixels(cur, 0, w, 0, 1, w, 1);
+        for (int y = 1; y < h - 1; y++) {
+            bmp.getPixels(next, 0, w, 0, y + 1, w, 1);
+            out[0] = cur[0];
+            out[w - 1] = cur[w - 1];
+            for (int x = 1; x < w - 1; x++) {
+                int c0 = cur[x];
+                int rr = avg9(prev, cur, next, x, 16), gg = avg9(prev, cur, next, x, 8), bb = avg9(prev, cur, next, x, 0);
+                int r0 = (c0 >> 16) & 255, g0 = (c0 >> 8) & 255, b0 = c0 & 255;
+                int r = Math.round(r0 + (rr - r0) * a);
+                int g = Math.round(g0 + (gg - g0) * a);
+                int b = Math.round(b0 + (bb - b0) * a);
+                out[x] = (c0 & 0xFF000000) | (r << 16) | (g << 8) | b;
+            }
+            bmp.setPixels(out, 0, w, 0, y, w, 1);
+            int[] t = prev;
+            prev = cur;
+            cur = next;
+            next = t;
+        }
+    }
+
+    /** Box-blurred value of one channel (shifted by {@code shift} bits) over the 3x3 neighbourhood of x. */
+    private static int avg9(int[] prev, int[] cur, int[] next, int x, int shift) {
+        int s = ((prev[x - 1] >> shift) & 255) + ((prev[x] >> shift) & 255) + ((prev[x + 1] >> shift) & 255)
+                + ((cur[x - 1] >> shift) & 255) + ((cur[x] >> shift) & 255) + ((cur[x + 1] >> shift) & 255)
+                + ((next[x - 1] >> shift) & 255) + ((next[x] >> shift) & 255) + ((next[x + 1] >> shift) & 255);
+        return Math.round(s / 9f);
     }
 
     /** Cross-shaped sharpen filter, row by row so a 12 MP picture needs only three rows of extra memory. */

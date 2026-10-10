@@ -253,13 +253,14 @@
     <string name="t_more">المزيد</string>
     <string name="crash_title">توقف التطبيق في المرة السابقة</string>
     <string name="crash_copy">نسخ التقرير</string>
-    <string name="beta2">بيتا 2</string>
+    <string name="beta3">بيتا 3</string>
     <string name="ad_exposure">التعريض</string>
     <string name="ad_tint">الصبغة</string>
     <string name="ad_fade">البهتان</string>
     <string name="ad_sharpen">الحدّة</string>
     <string name="ad_grain">الحبيبات</string>
-    <string name="ad_auto">تحسين تلقائي</string>
+    <string name="ad_auto">تحسين AI</string>
+    <string name="ad_denoise">تقليل الضجيج (AI)</string>
     <string name="ad_reset">إعادة ضبط</string>
     <string name="cr_straighten">تسوية</string>
     <string name="cr_3_2">3:2</string>

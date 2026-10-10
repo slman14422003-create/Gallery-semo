@@ -249,13 +249,14 @@
     <string name="t_more">More</string>
     <string name="crash_title">The app stopped last time</string>
     <string name="crash_copy">Copy report</string>
-    <string name="beta2">Beta 2</string>
+    <string name="beta3">Beta 3</string>
     <string name="ad_exposure">Exposure</string>
     <string name="ad_tint">Tint</string>
     <string name="ad_fade">Fade</string>
     <string name="ad_sharpen">Sharpen</string>
     <string name="ad_grain">Grain</string>
-    <string name="ad_auto">Auto</string>
+    <string name="ad_auto">AI Enhance</string>
+    <string name="ad_denoise">Denoise (AI)</string>
     <string name="ad_reset">Reset</string>
     <string name="cr_straighten">Straighten</string>
     <string name="cr_3_2">3:2</string>
