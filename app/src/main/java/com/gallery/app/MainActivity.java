@@ -17,6 +17,7 @@ import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.splashscreen.SplashScreen;
 
 import java.util.concurrent.Executors;
 
@@ -35,6 +36,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // swaps the splash theme (Theme.App.Starting) for the real AppCompat theme; without this the app crashes at launch
+        SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
