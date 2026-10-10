@@ -21,8 +21,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -69,6 +71,8 @@ public class MediaGrid extends LinearLayout {
     private String baseTitle = "";
     private Runnable onBack;
     private final List<TextView> chips = new ArrayList<>();
+    private boolean built;                       // the list has been filled at least once
+    private final Runnable applyQuery = () -> rebuild(false);
 
     public MediaGrid(BaseActivity a, int mode) {
         super(a);
@@ -128,7 +132,9 @@ public class MediaGrid extends LinearLayout {
                 @Override
                 public void afterTextChanged(Editable e) {
                     query = e.toString().trim().toLowerCase(Locale.getDefault());
-                    rebuild();
+                    // wait for a short pause in typing instead of re-sorting the whole library on every key
+                    removeCallbacks(applyQuery);
+                    postDelayed(applyQuery, query.isEmpty() ? 0 : 160);
                 }
             });
         }
@@ -153,6 +159,13 @@ public class MediaGrid extends LinearLayout {
         rv.setPadding(Ui.dp(a, 8), 0, Ui.dp(a, 8), Ui.dp(a, 10));
         rv.setOverScrollMode(OVER_SCROLL_NEVER);
         rv.getRecycledViewPool().setMaxRecycledViews(1, 60);
+        RecyclerView.ItemAnimator ia = rv.getItemAnimator();
+        if (ia != null) {
+            ia.setAddDuration(180);
+            ia.setRemoveDuration(140);
+            ia.setMoveDuration(220);
+            if (ia instanceof SimpleItemAnimator) ((SimpleItemAnimator) ia).setSupportsChangeAnimations(false);   // no flicker on updates
+        }
         final int gap = Ui.dp(a, 2);
         rv.addItemDecoration(new RecyclerView.ItemDecoration() {
             @Override
@@ -248,13 +261,25 @@ public class MediaGrid extends LinearLayout {
     }
 
     public void setSource(List<Media> list) {
-        source = list == null ? new ArrayList<Media>() : list;
+        List<Media> next = list == null ? new ArrayList<Media>() : list;
+        if (built && next == source) {
+            // same list as before (coming back from the viewer / settings): nothing to re-sort, just refresh the favourite marks
+            refreshMarks();
+            if (filter == 3) rebuild(true);
+            return;
+        }
+        source = next;
         // drop selections of items that are gone
         Set<String> keys = new LinkedHashSet<>();
         for (Media m : source) keys.add(m.key());
         sel.retainAll(keys);
         if (sel.isEmpty() && selecting) selecting = false;
-        rebuild();
+        rebuild(built);
+    }
+
+    /** Re-reads favourite / selection state of the visible tiles without reloading any picture. */
+    public void refreshMarks() {
+        if (!items.isEmpty()) ad.notifyItemRangeChanged(0, items.size(), "sel");
     }
 
     /** Consumes the back press while selecting. */
@@ -325,6 +350,12 @@ public class MediaGrid extends LinearLayout {
     }
 
     private void rebuild() {
+        rebuild(false);
+    }
+
+    /** {@code diff}: animate only what changed (library reloads) instead of redrawing the whole grid. */
+    private void rebuild(boolean diff) {
+        final List<Object> old = diff ? new ArrayList<Object>(items) : null;
         shown.clear();
         items.clear();
         boolean needQuery = mode == SEARCH && query.isEmpty();
@@ -350,7 +381,39 @@ public class MediaGrid extends LinearLayout {
             }
             items.add(m);
         }
-        ad.notifyDataSetChanged();
+        built = true;
+        if (old != null && !old.isEmpty() && !items.isEmpty() && old.size() + items.size() < 30000) {
+            DiffUtil.DiffResult r = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                @Override
+                public int getOldListSize() {
+                    return old.size();
+                }
+
+                @Override
+                public int getNewListSize() {
+                    return items.size();
+                }
+
+                @Override
+                public boolean areItemsTheSame(int o, int n) {
+                    Object x = old.get(o), y = items.get(n);
+                    if (x instanceof Media) return y instanceof Media && ((Media) x).key().equals(((Media) y).key());
+                    return x instanceof String && x.equals(y);
+                }
+
+                @Override
+                public boolean areContentsTheSame(int o, int n) {
+                    Object x = old.get(o), y = items.get(n);
+                    if (!(x instanceof Media) || !(y instanceof Media)) return true;
+                    Media a = (Media) x, b = (Media) y;
+                    return a.modified == b.modified && a.size == b.size && a.duration == b.duration && a.name.equals(b.name);
+                }
+            }, false);
+            r.dispatchUpdatesTo(ad);
+            refreshMarks();
+        } else {
+            ad.notifyDataSetChanged();
+        }
         boolean empty = shown.isEmpty();
         boolean loading = !Library.loaded && mode != SEARCH;
         emptyView.setVisibility(empty && !loading ? VISIBLE : GONE);
@@ -589,7 +652,9 @@ public class MediaGrid extends LinearLayout {
         public void onBindViewHolder(RecyclerView.ViewHolder h, int p, List<Object> payloads) {
             if (!payloads.isEmpty() && h.itemView instanceof Tile && p < items.size() && items.get(p) instanceof Media) {
                 Media m = (Media) items.get(p);
-                ((Tile) h.itemView).setSelection(selecting, sel.contains(m.key()), true);
+                Tile t = (Tile) h.itemView;
+                t.setFav(Library.isFav(act, m));
+                t.setSelection(selecting, sel.contains(m.key()), true);
                 return;
             }
             super.onBindViewHolder(h, p, payloads);

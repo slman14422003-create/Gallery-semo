@@ -21,6 +21,7 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.viewpager2.widget.CompositePageTransformer;
 import androidx.viewpager2.widget.MarginPageTransformer;
 import androidx.viewpager2.widget.ViewPager2;
 
@@ -66,7 +67,19 @@ public class ViewerActivity extends BaseActivity {
         adapter = new Adapter();
         pager.setAdapter(adapter);
         pager.setOffscreenPageLimit(1);
-        pager.setPageTransformer(new MarginPageTransformer(Ui.dp(this, 14)));
+        // gap between pages plus a soft depth effect while swiping (neighbours shrink and fade slightly)
+        CompositePageTransformer pt = new CompositePageTransformer();
+        pt.addTransformer(new MarginPageTransformer(Ui.dp(this, 14)));
+        pt.addTransformer((page, position) -> {
+            float d = Math.min(1f, Math.abs(position));
+            float s = 1f - 0.05f * d;
+            page.setScaleX(s);
+            page.setScaleY(s);
+            page.setAlpha(1f - 0.3f * d);
+        });
+        pager.setPageTransformer(pt);
+        View pagerList = pager.getChildAt(0);
+        if (pagerList != null) pagerList.setOverScrollMode(View.OVER_SCROLL_NEVER);
         root.addView(pager, new FrameLayout.LayoutParams(-1, -1));
 
         // top: floating back button and a title pill (no full-width bar)
@@ -209,16 +222,27 @@ public class ViewerActivity extends BaseActivity {
 
     private void toggleChrome() {
         chrome = !chrome;
-        float a = chrome ? 1f : 0f;
-        topBar.animate().alpha(a).setDuration(180).start();
-        bottomBar.animate().alpha(a).setDuration(180).start();
-        topBar.setClickable(chrome);
-        bottomBar.setVisibility(View.VISIBLE);
+        // a hidden bar must stop receiving touches: before, the invisible back button still caught taps in the corner
+        fadeChrome(topBar, chrome);
+        fadeChrome(bottomBar, chrome);
         WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         if (chrome) c.show(WindowInsetsCompat.Type.systemBars());
         else c.hide(WindowInsetsCompat.Type.systemBars());
         for (int i = 0; i < bottomBar.getChildCount(); i++) bottomBar.getChildAt(i).setEnabled(chrome);
+    }
+
+    private void fadeChrome(final View v, final boolean show) {
+        v.animate().cancel();
+        if (show) {
+            v.setVisibility(View.VISIBLE);
+            v.animate().alpha(1f).setDuration(180).withLayer().start();
+        } else {
+            v.animate().alpha(0f).setDuration(160).withLayer()
+                    .withEndAction(() -> {
+                        if (!chrome) v.setVisibility(View.INVISIBLE);
+                    }).start();
+        }
     }
 
     // ------------------------------------------------------------------ pages

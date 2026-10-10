@@ -193,6 +193,16 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # R8 mapping: turns obfuscated crash stack traces back into readable ones
+      - name: Upload R8 mapping
+        if: ${{ env.BUILD_TYPE == 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gallery-r8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
       # Never publish a Release that users cannot install over the previous one.
       - name: Refuse to publish with a temporary key
         if: ${{ steps.meta.outputs.publish == 'true' && steps.sign.outputs.permanent != 'true' }}

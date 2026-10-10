@@ -14,7 +14,8 @@
 المفتاح الذي يُنشأ هنا **صالح ٣٠ سنة** (`-validity 10950`).
 
 1. أنشئ مفتاحًا دائمًا:
-   - من GitHub: **Actions ← Generate signing key ← Run workflow** (المستودع يجب أن يكون **Private**)، ثم نزّل الـ Artifact `signing-key`.
+   - من GitHub: **Actions ← Generate signing key ← Run workflow**، ثم نزّل الـ Artifact `signing-key`.
+     يعمل أيضًا في المستودع **العام**، لكن عندها يستطيع أي حساب GitHub تنزيل الـ Artifact حتى تحذفه: نزّله فورًا ثم احذفه من صفحة التشغيل (Delete artifact).
    - أو على جهازك: `./tools/make-keystore.sh`
 2. أضف أسرار المستودع (Settings ← Secrets and variables ← Actions):
    - `KEYSTORE_BASE64` — محتوى الملف `KEYSTORE_BASE64.txt` (يُنشأ تلقائيًا مع المفتاح)

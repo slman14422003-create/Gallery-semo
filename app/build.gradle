@@ -41,6 +41,11 @@ android {
         buildConfig = true
     }
 
+    // keep only the two languages the app ships (drops the translations bundled inside appcompat / media3 / libVLC)
+    androidResources {
+        localeFilters.addAll(['ar', 'en'])
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -63,6 +68,7 @@ android {
     buildTypes {
         release {
             debuggable = false
+            // R8 (full mode): shrinks code, optimises, obfuscates; shrinkResources removes unused resources
             minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -81,7 +87,25 @@ android {
     }
 
     packaging {
-        resources.excludes += ['/META-INF/{AL2.0,LGPL2.1}', 'DebugProbesKt.bin']
+        resources.excludes += [
+                '/META-INF/{AL2.0,LGPL2.1}',
+                '/META-INF/*.version',
+                '/META-INF/*.kotlin_module',
+                '/META-INF/DEPENDENCIES',
+                '/META-INF/LICENSE*',
+                '/META-INF/NOTICE*',
+                '/META-INF/INDEX.LIST',
+                '/kotlin/**',
+                '**/*.kotlin_builtins',
+                '**/*.kotlin_metadata',
+                'DebugProbesKt.bin',
+                'kotlin-tooling-metadata.json'
+        ]
+        // libVLC's native libraries are by far the biggest part of the APK: store them compressed (the APK
+        // download shrinks by roughly half; the system extracts them once at install time)
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 

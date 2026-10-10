@@ -19,6 +19,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.splashscreen.SplashScreen;
 
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Photos, Albums and Search live here; Settings is its own screen. */
@@ -30,6 +31,9 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     private NavBar nav;
     private int tab = NavBar.PHOTOS;
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private View shown;   // the tab currently on screen
+    /** One shared worker for the update check (a new executor per screen leaked a thread every time). */
+    private static final ExecutorService UPDATE_IO = Executors.newSingleThreadExecutor();
 
     private final ActivityResultLauncher<String[]> permLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestMultiplePermissions(), r -> afterPermission());
@@ -57,8 +61,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
 
         nav = NavBar.attach(this, NavBar.PHOTOS, idx -> {
             if (idx == NavBar.SETTINGS) {
-                startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION));
-                overridePendingTransition(0, 0);
+                startActivity(new Intent(this, SettingsActivity.class));
+                overridePendingTransition(R.anim.tab_in, R.anim.tab_out);
             } else {
                 showTab(idx);
             }
@@ -80,9 +84,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         tab = getIntent().getIntExtra("tab", NavBar.PHOTOS);
         showTab(tab);
         Library.watch(this);
-        Library.listen(this);
-        refreshAccess();
-        if (Store.autoUpdate(this)) Updater.autoCheck(this, Executors.newSingleThreadExecutor(), ui);
+        // onStart() (right after this) loads the library and fills the grids once; doing it here too built every grid twice
+        if (Store.autoUpdate(this)) Updater.autoCheck(this, UPDATE_IO, ui);
     }
 
     @Override
@@ -123,16 +126,57 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         super.onDestroy();
     }
 
+    private View viewFor(int idx) {
+        return idx == NavBar.PHOTOS ? photos : idx == NavBar.ALBUMS ? albums : search;
+    }
+
+    /** Cross-fades to another tab (the old tab fades out while the new one fades in; no blank flash in between). */
     private void showTab(int idx) {
+        if (idx < NavBar.PHOTOS || idx > NavBar.SEARCH) idx = NavBar.PHOTOS;
+        final View next = viewFor(idx);
+        final View prev = shown;
+        final int old = tab;
         tab = idx;
-        photos.setVisibility(idx == NavBar.PHOTOS ? View.VISIBLE : View.GONE);
-        albums.setVisibility(idx == NavBar.ALBUMS ? View.VISIBLE : View.GONE);
-        search.setVisibility(idx == NavBar.SEARCH ? View.VISIBLE : View.GONE);
-        View v = idx == NavBar.PHOTOS ? photos : idx == NavBar.ALBUMS ? albums : search;
-        v.setAlpha(0f);
-        v.animate().alpha(1f).setDuration(180).start();
         if (nav != null) nav.render(idx);
+        if (prev != next) {
+            for (View v : new View[]{photos, albums, search}) {
+                if (v != next && v != prev) {
+                    v.animate().cancel();
+                    v.setAlpha(1f);
+                    v.setVisibility(View.GONE);
+                }
+            }
+            next.animate().cancel();
+            if (next.getVisibility() != View.VISIBLE) {
+                next.setAlpha(0f);
+                next.setVisibility(View.VISIBLE);
+            }
+            if (prev == null) {
+                next.setAlpha(1f);
+            } else {
+                next.animate().alpha(1f).setStartDelay(50).setDuration(220)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
+                        .withLayer().start();
+                prev.animate().cancel();
+                prev.animate().alpha(0f).setStartDelay(0).setDuration(150)
+                        .withLayer()
+                        .withEndAction(() -> {
+                            if (prev != shown) {
+                                prev.setVisibility(View.GONE);
+                                prev.setAlpha(1f);
+                            }
+                        }).start();
+            }
+            shown = next;
+        }
+        if (old == NavBar.SEARCH && idx != NavBar.SEARCH) hideKeyboard();
         if (idx == NavBar.SEARCH) search.focusSearch2();
+    }
+
+    private void hideKeyboard() {
+        android.view.inputmethod.InputMethodManager im =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (im != null && stage != null) im.hideSoftInputFromWindow(stage.getWindowToken(), 0);
     }
 
     // ------------------------------------------------------------------ access

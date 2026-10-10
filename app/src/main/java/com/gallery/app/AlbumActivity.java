@@ -26,7 +26,7 @@ public class AlbumActivity extends BaseActivity implements Library.Listener {
                 if (!grid.handleBack()) finish();
             }
         });
-        onLibraryChanged();
+        // the grid is filled in onStart(), which runs right after this
     }
 
     @Override

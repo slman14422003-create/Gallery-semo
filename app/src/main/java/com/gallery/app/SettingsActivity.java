@@ -23,6 +23,7 @@ public class SettingsActivity extends BaseActivity {
         findViewById(R.id.btnRefresh).setVisibility(View.GONE);
         content = findViewById(R.id.content);
         Ui.autoGroup(this, content);
+        nav = NavBar.attach(this, NavBar.SETTINGS, this::goTab);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -34,16 +35,10 @@ public class SettingsActivity extends BaseActivity {
     private void goTab(int idx) {
         Intent i = new Intent(this, MainActivity.class);
         i.putExtra("tab", idx);
-        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
         finish();
-        overridePendingTransition(0, 0);
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        if (nav == null) nav = NavBar.attach(this, NavBar.SETTINGS, this::goTab);
+        overridePendingTransition(R.anim.tab_in, R.anim.tab_out);
     }
 
     @Override

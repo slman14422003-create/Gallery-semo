@@ -91,7 +91,9 @@ final class Tile extends FrameLayout {
         LayoutParams cp = new LayoutParams(Ui.dp(c, 24), Ui.dp(c, 24), Gravity.TOP | Gravity.START);
         cp.setMargins(Ui.dp(c, 7), Ui.dp(c, 7), Ui.dp(c, 7), Ui.dp(c, 7));
         addView(check, cp);
-        Ui.press(c, this);
+        // press dip + selected shrink are handled by one state-list animator (a second, hand-made scale animation
+        // used to fight the press animation and un-shrank a selected tile as soon as it was released)
+        setStateListAnimator(android.animation.AnimatorInflater.loadStateListAnimator(c, R.animator.tile_scale));
     }
 
     @Override
@@ -129,13 +131,11 @@ final class Tile extends FrameLayout {
             }
             check.setBackground(g);
         }
-        float target = selected ? 0.86f : 1f;
-        if (animate) {
-            animate().scaleX(target).scaleY(target).setDuration(160).start();
-        } else {
-            animate().cancel();
-            setScaleX(target);
-            setScaleY(target);
-        }
+        if (isSelected() != selected) setSelected(selected);
+        if (!animate) jumpDrawablesToCurrentState();
+    }
+
+    void setFav(boolean fav) {
+        favMark.setVisibility(fav ? VISIBLE : GONE);
     }
 }
