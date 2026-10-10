@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.util.TypedValue;
@@ -12,11 +13,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
@@ -38,14 +38,76 @@ public class Dlg extends AlertDialog.Builder {
     @Override
     public AlertDialog create() {
         final AlertDialog d = super.create();
+        dlg = d;
         d.setOnShowListener(dialog -> style(d));
         return d;
     }
 
-    /** Option lists get roomy, rounded, start-aligned rows instead of the stock list item. */
+    private AlertDialog dlg;
+
+    /**
+     * Option lists are drawn as an iOS-style list inside the dialog (own view, so a message above it works):
+     * 17sp rows, hairline separators, a blue check on the current choice. A label starting with "● " or "✓" marks the
+     * current choice, "○ " a normal one; the marker itself is not shown.
+     */
     @Override
-    public AlertDialog.Builder setItems(CharSequence[] items, DialogInterface.OnClickListener listener) {
-        return setAdapter(new ChoiceAdapter(getContext(), items), listener);
+    public AlertDialog.Builder setItems(CharSequence[] items, final DialogInterface.OnClickListener listener) {
+        final Context c = getContext();
+        ScrollView sv = new ScrollView(c);
+        sv.setVerticalScrollBarEnabled(false);
+        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout list = new LinearLayout(c);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 10));
+        sv.addView(list, new ViewGroup.LayoutParams(-1, -2));
+        for (int i = 0; i < items.length; i++) {
+            final int which = i;
+            String label = String.valueOf(items[i]);
+            boolean on = false;
+            if (label.startsWith("● ") || label.startsWith("✓")) {
+                on = true;
+                label = label.substring(label.startsWith("✓") ? 1 : 2);
+            } else if (label.startsWith("○ ")) {
+                label = label.substring(2);
+            }
+            label = label.trim();
+            LinearLayout row = new LinearLayout(c);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinimumHeight(Ui.dp(c, 54));
+            row.setPaddingRelative(Ui.dp(c, 22), Ui.dp(c, 8), Ui.dp(c, 22), Ui.dp(c, 8));
+            TextView t = new TextView(c);
+            t.setText(label);
+            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            t.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+            t.setTextColor(Ui.color(c, destructive(c, label) ? R.color.bad : R.color.text_primary));
+            row.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
+            if (on) {
+                ImageView ck = new ImageView(c);
+                ck.setImageResource(R.drawable.ic_check);
+                ck.setImageTintList(ColorStateList.valueOf(Ui.color(c, R.color.accent)));
+                row.addView(ck, new LinearLayout.LayoutParams(Ui.dp(c, 22), Ui.dp(c, 22)));
+            }
+            if (i < items.length - 1) {
+                GradientDrawable line = new GradientDrawable();
+                line.setColor(Ui.color(c, R.color.stroke_soft));
+                android.graphics.drawable.LayerDrawable ld = new android.graphics.drawable.LayerDrawable(
+                        new android.graphics.drawable.Drawable[]{line});
+                ld.setLayerGravity(0, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL);
+                ld.setLayerHeight(0, Math.max(1, Math.round(c.getResources().getDisplayMetrics().density * 0.5f)));
+                ld.setLayerInsetStart(0, Ui.dp(c, 22));
+                row.setBackground(new RippleDrawable(ColorStateList.valueOf(Ui.color(c, R.color.ripple)), ld, null));
+            } else {
+                row.setBackground(new RippleDrawable(ColorStateList.valueOf(Ui.color(c, R.color.ripple)), null,
+                        new ColorDrawable(0xFFFFFFFF)));
+            }
+            row.setOnClickListener(v -> {
+                if (dlg != null) dlg.dismiss();
+                if (listener != null) listener.onClick(dlg, which);
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+        return setView(sv);
     }
 
     private static final int[] DESTRUCTIVE = {R.string.delete};
@@ -56,31 +118,6 @@ public class Dlg extends AlertDialog.Builder {
         Set<String> set = new HashSet<>();
         for (int id : DESTRUCTIVE) set.add(c.getString(id));
         return set.contains(label.toString());
-    }
-
-    private static final class ChoiceAdapter extends ArrayAdapter<CharSequence> {
-        ChoiceAdapter(Context c, CharSequence[] items) {
-            super(c, 0, items);
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            Context c = getContext();
-            TextView t = convertView instanceof TextView ? (TextView) convertView : new TextView(c);
-            CharSequence label = getItem(position);
-            t.setText(label);
-            t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            t.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-            t.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
-            t.setMinHeight(Ui.dp(c, 52));
-            t.setPaddingRelative(Ui.dp(c, 16), Ui.dp(c, 10), Ui.dp(c, 16), Ui.dp(c, 10));
-            t.setTextColor(Ui.color(c, destructive(c, label) ? R.color.bad : R.color.text_primary));
-            GradientDrawable mask = new GradientDrawable();
-            mask.setColor(0xFFFFFFFF);
-            mask.setCornerRadius(Ui.dp(c, 16));
-            t.setBackground(new RippleDrawable(ColorStateList.valueOf(Ui.color(c, R.color.ripple)), null, mask));
-            return t;
-        }
     }
 
     /** A centered result dialog with a big status icon (success or error). */
@@ -151,14 +188,6 @@ public class Dlg extends AlertDialog.Builder {
             msg.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
             msg.setGravity(Gravity.CENTER_HORIZONTAL);
         }
-        ListView lv = d.getListView();
-        if (lv != null) {
-            lv.setDivider(null);
-            lv.setDividerHeight(0);
-            lv.setClipToPadding(false);
-            lv.setPaddingRelative(Ui.dp(c, 10), Ui.dp(c, 4), Ui.dp(c, 10), Ui.dp(c, 12));
-        }
-
         Button pos = d.getButton(AlertDialog.BUTTON_POSITIVE);
         Button neg = d.getButton(AlertDialog.BUTTON_NEGATIVE);
         Button neu = d.getButton(AlertDialog.BUTTON_NEUTRAL);

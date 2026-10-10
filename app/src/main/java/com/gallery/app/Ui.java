@@ -15,6 +15,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
@@ -304,7 +305,8 @@ public final class Ui {
                     new android.graphics.drawable.Drawable[]{fill, line});
             ld.setLayerGravity(1, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL);
             ld.setLayerHeight(1, Math.max(1, Math.round(c.getResources().getDisplayMetrics().density * 0.5f)));
-            ld.setLayerInsetStart(1, dp(c, card.findViewById(R.id.icon) != null ? 58 : 16));
+            View ic = card.findViewById(R.id.icon);
+            ld.setLayerInsetStart(1, dp(c, ic != null && ic.getVisibility() == View.VISIBLE ? 58 : 16));
             base = ld;
         }
         card.setBackground(new RippleDrawable(
@@ -329,8 +331,6 @@ public final class Ui {
         g.setOnHierarchyChangeListener(new ViewGroup.OnHierarchyChangeListener() {
             @Override
             public void onChildViewAdded(View parent, View child) {
-                int idx = g.indexOfChild(child);
-                if (idx >= 0 && idx < 14 && child.getVisibility() == View.VISIBLE) enter(child, idx);
                 g.removeCallbacks(r);
                 g.post(r);
             }
@@ -414,6 +414,68 @@ public final class Ui {
         public void onChange(CompoundButton.OnCheckedChangeListener l) {
             sw.setOnCheckedChangeListener(l);
         }
+    }
+
+    /** Big centred app card at the top of Settings (icon, name, version), like the profile header in iOS Settings. */
+    public static View hero(Context c, CharSequence name, CharSequence sub) {
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 6));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.ic_image);
+        icon.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+        int p = dp(c, 18);
+        icon.setPadding(p, p, p, p);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF5AC8FA, 0xFF007AFF, 0xFF5856D6});
+        g.setCornerRadius(dp(c, 20));
+        icon.setBackground(g);
+        box.addView(icon, new LinearLayout.LayoutParams(dp(c, 76), dp(c, 76)));
+        TextView n = new TextView(c);
+        n.setText(name);
+        n.setTextColor(color(c, R.color.text_primary));
+        n.setTextSize(21);
+        n.setTypeface(Typeface.DEFAULT_BOLD);
+        n.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-2, -2);
+        np.topMargin = dp(c, 12);
+        box.addView(n, np);
+        TextView v = new TextView(c);
+        v.setText(sub);
+        v.setTextColor(color(c, R.color.text_secondary));
+        v.setTextSize(13);
+        v.setGravity(Gravity.CENTER);
+        box.addView(v, new LinearLayout.LayoutParams(-2, -2));
+        return box;
+    }
+
+    /** Small grey explanation under a group of rows (iOS list footer). */
+    public static TextView footer(Context c, CharSequence text) {
+        TextView t = new TextView(c);
+        t.setText(text);
+        t.setTextColor(color(c, R.color.text_secondary));
+        t.setTextSize(13);
+        t.setLineSpacing(0, 1.15f);
+        t.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+        t.setPaddingRelative(dp(c, 32), dp(c, 8), dp(c, 32), dp(c, 4));
+        return t;
+    }
+
+    /** Switch row with a coloured icon square. */
+    public static Toggle toggle(Context c, ViewGroup parent, int titleRes, int subRes, boolean checked, int iconRes, int iconColor) {
+        Toggle t = toggle(c, parent, titleRes, subRes, checked);
+        ImageView icon = t.view.findViewById(R.id.icon);
+        if (icon != null) {
+            icon.setImageResource(iconRes);
+            icon.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+            GradientDrawable g = new GradientDrawable();
+            g.setCornerRadius(dp(c, 8));
+            g.setColor(0xFF000000 | (iconColor & 0x00FFFFFF));
+            icon.setBackground(g);
+            icon.setVisibility(View.VISIBLE);
+        }
+        return t;
     }
 
     /** Inflates a switch row. Add {@code result.view} to a container; consecutive rows group into one card. */

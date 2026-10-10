@@ -19,6 +19,15 @@
         android:paddingEnd="16dp"
         android:paddingBottom="9dp">
 
+        <ImageView
+            android:id="@+id/icon"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:layout_marginEnd="12dp"
+            android:importantForAccessibility="no"
+            android:padding="6dp"
+            android:visibility="gone" />
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
