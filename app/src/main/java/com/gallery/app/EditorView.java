@@ -61,7 +61,7 @@ final class EditorView extends View {
     void setMode(int m) {
         mode = m;
         active = null;
-        if (m == CROP) cropFromState();
+        if (m == CROP && st != null && dst.width() > 0) cropFromState();
         invalidate();
     }
 
@@ -110,6 +110,7 @@ final class EditorView extends View {
     }
 
     private void cropFromState() {
+        if (st == null || dst.width() <= 0) return;
         crop.set(dst.left + st.cl * dst.width(), dst.top + st.ct * dst.height(),
                 dst.left + st.cr * dst.width(), dst.top + st.cb * dst.height());
     }

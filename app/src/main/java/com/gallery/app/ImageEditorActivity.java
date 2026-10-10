@@ -254,9 +254,13 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         ev.setMode(idx == 0 ? EditorView.CROP : idx == 3 ? EditorView.DRAW : idx == 4 ? EditorView.TEXT : EditorView.NONE);
         ev.setBrush(brushColor, brushW);
         panel.removeAllViews();
-        View p = idx == 0 ? cropPanel() : idx == 1 ? adjustPanel() : idx == 2 ? filterPanel() : idx == 3 ? drawPanel() : textPanel();
-        panel.addView(p);
-        rebuild();
+        try {
+            View p = idx == 0 ? cropPanel() : idx == 1 ? adjustPanel() : idx == 2 ? filterPanel() : idx == 3 ? drawPanel() : textPanel();
+            panel.addView(p);
+            rebuild();
+        } catch (Throwable t) {
+            Toast.makeText(this, getString(R.string.error) + ": " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private LinearLayout row() {

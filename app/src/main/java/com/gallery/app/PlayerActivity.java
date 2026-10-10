@@ -64,7 +64,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
     private String engineKind = "exo";
     private FrameLayout root, stage, controls;
     private LinearLayout topBar, centerBar, bottomBar;
-    private TextView titleTv, curTv, durTv, engineTv, hud;
+    private TextView titleTv, curTv, durTv, engineTv, hud, speedBtn;
     private SeekBar seek;
     private ImageButton playBtn, lockFab;
     private SpinnerView spinner;
@@ -142,7 +142,22 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
 
     // ------------------------------------------------------------------ UI
 
-    private ImageButton ib(int icon, int desc, int sizeDp) {
+    /** Round translucent icon button. */
+    private ImageButton glass(int icon, int desc, int color) {
+        ImageButton b = new ImageButton(this);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.OVAL);
+        g.setColor(color);
+        b.setBackground(g);
+        b.setContentDescription(getString(desc));
+        Ui.press(this, b);
+        return b;
+    }
+
+    private ImageButton toolIcon(int icon, int desc, View.OnClickListener click) {
         ImageButton b = new ImageButton(this);
         b.setImageResource(icon);
         b.setImageTintList(ColorStateList.valueOf(Color.WHITE));
@@ -150,29 +165,12 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         b.setBackgroundResource(R.drawable.bg_tile_round);
         b.setContentDescription(getString(desc));
         Ui.press(this, b);
+        b.setOnClickListener(click);
         return b;
     }
 
-    private LinearLayout tool(int icon, int label, View.OnClickListener click) {
-        LinearLayout t = new LinearLayout(this);
-        t.setOrientation(LinearLayout.VERTICAL);
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4));
-        ImageView i = new ImageView(this);
-        i.setImageResource(icon);
-        i.setImageTintList(ColorStateList.valueOf(Color.WHITE));
-        t.addView(i, new LinearLayout.LayoutParams(Ui.dp(this, 26), Ui.dp(this, 26)));
-        TextView l = new TextView(this);
-        l.setText(label);
-        l.setTextColor(0xDDFFFFFF);
-        l.setTextSize(10.5f);
-        l.setSingleLine(true);
-        l.setGravity(Gravity.CENTER);
-        t.addView(l);
-        t.setContentDescription(getString(label));
-        Ui.press(this, t);
-        t.setOnClickListener(click);
-        return t;
+    private LinearLayout.LayoutParams toolLp() {
+        return new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
     }
 
     private void build() {
@@ -192,33 +190,40 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         controls = new FrameLayout(this);
         root.addView(controls, new FrameLayout.LayoutParams(-1, -1));
 
-        // top
+        // top: floating back button, title pill and engine chip (no full-width bar)
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xCC000000, 0}));
-        ImageButton back = ib(R.drawable.ic_back, R.string.back, 44);
+        ImageButton back = glass(R.drawable.ic_back, R.string.back, 0x66000000);
         back.setOnClickListener(v -> finish());
-        topBar.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+        topBar.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
         titleTv = new TextView(this);
         titleTv.setTextColor(Color.WHITE);
-        titleTv.setTextSize(16);
+        titleTv.setTextSize(15);
         titleTv.setSingleLine(true);
         titleTv.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        titleTv.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
+        titleTv.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
+        titleTv.setGravity(Gravity.CENTER_VERTICAL);
         titleTv.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
-        topBar.addView(titleTv, new LinearLayout.LayoutParams(0, -2, 1f));
+        GradientDrawable tg = new GradientDrawable();
+        tg.setCornerRadius(Ui.dp(this, 23));
+        tg.setColor(0x66000000);
+        titleTv.setBackground(tg);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
+        tlp.setMargins(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
+        topBar.addView(titleTv, tlp);
         engineTv = new TextView(this);
         engineTv.setTextColor(Color.WHITE);
-        engineTv.setTextSize(11.5f);
+        engineTv.setTextSize(12);
         engineTv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        engineTv.setGravity(Gravity.CENTER);
         GradientDrawable eg = new GradientDrawable();
-        eg.setCornerRadius(Ui.dp(this, 20));
-        eg.setColor(0x44FFFFFF);
+        eg.setCornerRadius(Ui.dp(this, 23));
+        eg.setColor(Ui.color(this, R.color.accent));
         engineTv.setBackground(eg);
-        engineTv.setPadding(Ui.dp(this, 10), Ui.dp(this, 5), Ui.dp(this, 10), Ui.dp(this, 5));
+        engineTv.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
         engineTv.setOnClickListener(v -> toggleEngine());
-        topBar.addView(engineTv);
+        topBar.addView(engineTv, new LinearLayout.LayoutParams(-2, Ui.dp(this, 46)));
         controls.addView(topBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         // center transport
@@ -226,33 +231,33 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         centerBar.setOrientation(LinearLayout.HORIZONTAL);
         centerBar.setGravity(Gravity.CENTER);
         centerBar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        ImageButton prev = ib(R.drawable.ic_skip_prev, R.string.prev, 52);
-        ImageButton rew = ib(R.drawable.ic_rewind, R.string.back10, 52);
-        playBtn = ib(R.drawable.ic_play_fill, R.string.play, 72);
-        ImageButton fwd = ib(R.drawable.ic_forward, R.string.fwd10, 52);
-        ImageButton next = ib(R.drawable.ic_skip_next, R.string.next, 52);
-        GradientDrawable pg = new GradientDrawable();
-        pg.setShape(GradientDrawable.OVAL);
-        pg.setColor(Ui.color(this, R.color.accent));
-        playBtn.setBackground(pg);
+        ImageButton prev = glass(R.drawable.ic_skip_prev, R.string.prev, 0x55000000);
+        ImageButton rew = glass(R.drawable.ic_rewind, R.string.back10, 0x55000000);
+        playBtn = glass(R.drawable.ic_play_fill, R.string.play, Ui.color(this, R.color.accent));
+        ImageButton fwd = glass(R.drawable.ic_forward, R.string.fwd10, 0x55000000);
+        ImageButton next = glass(R.drawable.ic_skip_next, R.string.next, 0x55000000);
         prev.setOnClickListener(v -> step(-1));
         next.setOnClickListener(v -> step(1));
         rew.setOnClickListener(v -> skip(-10_000));
         fwd.setOnClickListener(v -> skip(10_000));
         playBtn.setOnClickListener(v -> togglePlay());
-        centerBar.addView(prev, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
-        centerBar.addView(rew, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
-        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(Ui.dp(this, 74), Ui.dp(this, 74));
-        pl.setMargins(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
-        centerBar.addView(playBtn, pl);
-        centerBar.addView(fwd, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
-        centerBar.addView(next, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
+        int[] sizes = {46, 52, 78, 52, 46};
+        ImageButton[] tb = {prev, rew, playBtn, fwd, next};
+        for (int i = 0; i < tb.length; i++) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, sizes[i]), Ui.dp(this, sizes[i]));
+            lp.setMargins(Ui.dp(this, 7), 0, Ui.dp(this, 7), 0);
+            centerBar.addView(tb[i], lp);
+        }
         controls.addView(centerBar, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
-        // bottom
+        // bottom: one rounded card with the seek bar and the tool row
         bottomBar = new LinearLayout(this);
         bottomBar.setOrientation(LinearLayout.VERTICAL);
-        bottomBar.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{0xCC000000, 0}));
+        GradientDrawable cg = new GradientDrawable();
+        cg.setCornerRadius(Ui.dp(this, 30));
+        cg.setColor(0xCC0C1016);
+        cg.setStroke(Ui.dp(this, 1), 0x26FFFFFF);
+        bottomBar.setBackground(cg);
         LinearLayout sr = new LinearLayout(this);
         sr.setGravity(Gravity.CENTER_VERTICAL);
         sr.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
@@ -262,8 +267,8 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         seek.setMax(1000);
         seek.setProgressTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
         seek.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
-        seek.setProgressBackgroundTintList(ColorStateList.valueOf(0x55FFFFFF));
-        seek.setSecondaryProgressTintList(ColorStateList.valueOf(0x55FFFFFF));
+        seek.setProgressBackgroundTintList(ColorStateList.valueOf(0x44FFFFFF));
+        seek.setSecondaryProgressTintList(ColorStateList.valueOf(0x44FFFFFF));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
@@ -284,28 +289,32 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
             }
         });
         sr.addView(curTv);
-        sr.addView(seek, new LinearLayout.LayoutParams(0, Ui.dp(this, 40), 1f));
+        sr.addView(seek, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
         sr.addView(durTv);
         bottomBar.addView(sr);
 
-        HorizontalScrollView hs = new HorizontalScrollView(this);
-        hs.setHorizontalScrollBarEnabled(false);
         LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.HORIZONTAL);
         tools.setGravity(Gravity.CENTER);
-        tools.addView(tool(R.drawable.ic_lock, R.string.t_lock, v -> setLocked(true)));
-        tools.addView(tool(R.drawable.ic_speed, R.string.t_speed, v -> pickSpeed()));
-        tools.addView(tool(R.drawable.ic_aspect, R.string.t_aspect, v -> cycleAspect()));
-        tools.addView(tool(R.drawable.ic_rotate, R.string.t_rotate, v -> cycleOrientation()));
-        tools.addView(tool(R.drawable.ic_music, R.string.t_audio, v -> pickAudio()));
-        tools.addView(tool(R.drawable.ic_subtitle, R.string.t_subs, v -> pickSubs()));
-        tools.addView(tool(R.drawable.ic_repeat, R.string.t_loop, v -> toggleLoop((LinearLayout) v)));
-        if (Build.VERSION.SDK_INT >= 26 && getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
-            tools.addView(tool(R.drawable.ic_pip, R.string.t_pip, v -> enterPip()));
-        }
-        tools.addView(tool(R.drawable.ic_info, R.string.info, v -> InfoSheet.show(this, playlist.get(idx))));
-        hs.addView(tools);
-        bottomBar.addView(hs);
+        tools.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        tools.addView(toolIcon(R.drawable.ic_lock, R.string.t_lock, v -> setLocked(true)), toolLp());
+        speedBtn = new TextView(this);
+        speedBtn.setText("1×");
+        speedBtn.setTextColor(Color.WHITE);
+        speedBtn.setTextSize(15);
+        speedBtn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        speedBtn.setGravity(Gravity.CENTER);
+        speedBtn.setContentDescription(getString(R.string.t_speed));
+        speedBtn.setBackgroundResource(R.drawable.bg_tile_round);
+        Ui.press(this, speedBtn);
+        speedBtn.setOnClickListener(v -> pickSpeed());
+        tools.addView(speedBtn, toolLp());
+        tools.addView(toolIcon(R.drawable.ic_aspect, R.string.t_aspect, v -> cycleAspect()), toolLp());
+        tools.addView(toolIcon(R.drawable.ic_rotate, R.string.t_rotate, v -> cycleOrientation()), toolLp());
+        tools.addView(toolIcon(R.drawable.ic_music, R.string.t_audio, v -> pickAudio()), toolLp());
+        tools.addView(toolIcon(R.drawable.ic_subtitle, R.string.t_subs, v -> pickSubs()), toolLp());
+        tools.addView(toolIcon(R.drawable.ic_more, R.string.t_more, v -> showMore()), toolLp());
+        bottomBar.addView(tools);
         controls.addView(bottomBar, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
         hud = new TextView(this);
@@ -320,14 +329,14 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         hud.setPadding(Ui.dp(this, 20), Ui.dp(this, 12), Ui.dp(this, 20), Ui.dp(this, 12));
         hud.setVisibility(View.GONE);
         FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        hp.topMargin = Ui.dp(this, 70);
+        hp.topMargin = Ui.dp(this, 120);
         root.addView(hud, hp);
 
         spinner = new SpinnerView(this);
         root.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52), Gravity.CENTER));
         spinner.setVisibility(View.GONE);
 
-        lockFab = ib(R.drawable.ic_lock_fill, R.string.t_unlock, 52);
+        lockFab = glass(R.drawable.ic_lock_fill, R.string.t_unlock, 0x99000000);
         GradientDrawable lg = new GradientDrawable();
         lg.setShape(GradientDrawable.OVAL);
         lg.setColor(0x99000000);
@@ -340,8 +349,11 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets b = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            topBar.setPadding(Ui.dp(this, 8) + b.left, b.top + Ui.dp(this, 4), Ui.dp(this, 12) + b.right, Ui.dp(this, 20));
-            bottomBar.setPadding(Ui.dp(this, 12) + b.left, Ui.dp(this, 16), Ui.dp(this, 12) + b.right, Ui.dp(this, 8) + b.bottom);
+            topBar.setPadding(Ui.dp(this, 12) + b.left, b.top + Ui.dp(this, 10), Ui.dp(this, 12) + b.right, 0);
+            FrameLayout.LayoutParams bp = (FrameLayout.LayoutParams) bottomBar.getLayoutParams();
+            bp.setMargins(Ui.dp(this, 12) + b.left, 0, Ui.dp(this, 12) + b.right, Ui.dp(this, 12) + b.bottom);
+            bottomBar.setLayoutParams(bp);
+            bottomBar.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
             return insets;
         });
     }
@@ -755,6 +767,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         new Dlg(this).setTitle(R.string.t_speed).setItems(n, (d, w) -> {
             speed = SPEEDS[w];
             engine.setSpeed(speed);
+            speedBtn.setText(fmtSpeed(speed) + "×");
             hudShow(fmtSpeed(speed) + "×");
         }).show();
     }
@@ -778,12 +791,16 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         hudShow(getString(orient == 0 ? R.string.rot_auto : orient == 1 ? R.string.rot_land : R.string.rot_port));
     }
 
-    private void toggleLoop(LinearLayout tool) {
-        loop = !loop;
-        engine.setLooping(loop);
-        tool.setAlpha(loop ? 1f : 0.7f);
-        ((ImageView) tool.getChildAt(0)).setImageTintList(ColorStateList.valueOf(loop ? Ui.color(this, R.color.accent) : Color.WHITE));
-        hudShow(getString(loop ? R.string.loop_on : R.string.loop_off));
+    private void showMore() {
+        String[] items = {(loop ? "● " : "○ ") + getString(R.string.t_loop), getString(R.string.t_pip), getString(R.string.info)};
+        new Dlg(this).setTitle(R.string.t_more).setItems(items, (d, w) -> {
+            if (w == 0) {
+                loop = !loop;
+                engine.setLooping(loop);
+                hudShow(getString(loop ? R.string.loop_on : R.string.loop_off));
+            } else if (w == 1) enterPip();
+            else InfoSheet.show(this, playlist.get(idx));
+        }).show();
     }
 
     private void pickAudio() {

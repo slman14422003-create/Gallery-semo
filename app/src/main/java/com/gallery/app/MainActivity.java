@@ -98,6 +98,23 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         super.onStart();
         Library.listen(this);
         refreshAccess();
+        final String crash = CrashLog.take(this);
+        if (crash != null) {
+            android.widget.ScrollView sv = new android.widget.ScrollView(this);
+            TextView t = new TextView(this);
+            t.setText(crash);
+            t.setTextSize(11);
+            t.setTextIsSelectable(true);
+            t.setTextColor(Ui.color(this, R.color.text_secondary));
+            t.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), Ui.dp(this, 8));
+            sv.addView(t);
+            new Dlg(this).setTitle(R.string.crash_title).setView(sv)
+                    .setPositiveButton(R.string.crash_copy, (d, w) -> {
+                        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("crash", crash));
+                    })
+                    .setNegativeButton(R.string.close, null).show();
+        }
     }
 
     @Override

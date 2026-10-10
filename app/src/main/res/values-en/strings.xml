@@ -256,4 +256,7 @@
         <item quantity="other">Delete %d items?</item>
     </plurals>
 
+    <string name="t_more">More</string>
+    <string name="crash_title">The app stopped last time</string>
+    <string name="crash_copy">Copy report</string>
 </resources>

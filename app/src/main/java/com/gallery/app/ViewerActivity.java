@@ -69,35 +69,38 @@ public class ViewerActivity extends BaseActivity {
         pager.setPageTransformer(new MarginPageTransformer(Ui.dp(this, 14)));
         root.addView(pager, new FrameLayout.LayoutParams(-1, -1));
 
-        // top bar
+        // top: floating back button and a title pill (no full-width bar)
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        GradientDrawable scrim = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xB3000000, 0x00000000});
-        topBar.setBackground(scrim);
         ImageButton back = roundButton(R.drawable.ic_back, R.string.back);
         back.setOnClickListener(v -> finish());
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44));
-        bp.setMarginEnd(Ui.dp(this, 6));
-        topBar.addView(back, bp);
+        topBar.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setGravity(Gravity.CENTER_VERTICAL);
+        titles.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
+        GradientDrawable tg = new GradientDrawable();
+        tg.setCornerRadius(Ui.dp(this, 23));
+        tg.setColor(0x66000000);
+        titles.setBackground(tg);
         titleTv = new TextView(this);
         titleTv.setTextColor(Color.WHITE);
-        titleTv.setTextSize(16);
+        titleTv.setTextSize(14.5f);
         titleTv.setSingleLine(true);
         titleTv.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
         titleTv.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
         subTv = new TextView(this);
-        subTv.setTextColor(0xCCFFFFFF);
-        subTv.setTextSize(12.5f);
+        subTv.setTextColor(0xBBFFFFFF);
+        subTv.setTextSize(11.5f);
         subTv.setSingleLine(true);
         subTv.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
         titles.addView(titleTv);
         titles.addView(subTv);
-        topBar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
-        root.addView(topBar, tp);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
+        tlp.setMarginStart(Ui.dp(this, 8));
+        topBar.addView(titles, tlp);
+        root.addView(topBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         // bottom action pill
         final ImageButton[] btns = new ImageButton[5];
@@ -117,7 +120,7 @@ public class ViewerActivity extends BaseActivity {
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets b = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            topBar.setPadding(Ui.dp(this, 8) + b.left, b.top + Ui.dp(this, 6), Ui.dp(this, 12) + b.right, Ui.dp(this, 22));
+            topBar.setPadding(Ui.dp(this, 12) + b.left, b.top + Ui.dp(this, 10), Ui.dp(this, 12) + b.right, 0);
             FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bottomBar.getLayoutParams();
             p.bottomMargin = Ui.dp(this, 16) + b.bottom;
             bottomBar.setLayoutParams(p);
@@ -164,7 +167,7 @@ public class ViewerActivity extends BaseActivity {
         b.setScaleType(ImageView.ScaleType.CENTER);
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
-        g.setColor(0x55000000);
+        g.setColor(0x66000000);
         b.setBackground(g);
         b.setContentDescription(getString(desc));
         Ui.press(this, b);
