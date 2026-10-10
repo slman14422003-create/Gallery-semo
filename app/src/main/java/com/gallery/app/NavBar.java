@@ -33,6 +33,11 @@ final class NavBar {
         void onTab(int index);
     }
 
+    /** Tapping the tab that is already open (e.g. scroll to top). */
+    interface Reselect {
+        void onReselect(int index);
+    }
+
     private final Activity a;
     private final Callback cb;
     private final LinearLayout bar;
@@ -42,6 +47,11 @@ final class NavBar {
     private final Drawable[] pills = new Drawable[COUNT];
     private int selected = -1;
     private ValueAnimator anim;
+    private Reselect reselect;
+
+    void setOnReselect(Reselect r) {
+        reselect = r;
+    }
 
     private NavBar(Activity a, Callback cb, LinearLayout bar) {
         this.a = a;
@@ -58,6 +68,7 @@ final class NavBar {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setBackgroundResource(R.drawable.bg_nav_float);
         bar.setPadding(Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6));
+        bar.setElevation(Ui.dp(a, 6));   // soft shadow so the floating bar lifts off the content
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         blp.setMargins(Ui.dp(a, 16), Ui.dp(a, 6), Ui.dp(a, 16), Ui.dp(a, 12));
@@ -98,7 +109,9 @@ final class NavBar {
 
             Ui.press(a, item);
             item.setOnClickListener(v -> {
+                v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
                 if (idx != selected) cb.onTab(idx);
+                else if (reselect != null) reselect.onReselect(idx);
             });
             bar.addView(item, new LinearLayout.LayoutParams(0, Ui.dp(a, 48), 1f));
             items[i] = item;
@@ -130,6 +143,7 @@ final class NavBar {
         }
         for (int i = 0; i < COUNT; i++) {
             boolean on = i == sel;
+            items[i].setSelected(on);
             names[i].setVisibility(on ? View.VISIBLE : View.GONE);
             items[i].setPadding(Ui.dp(a, 8), 0, Ui.dp(a, on ? 14 : 8), 0);
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) items[i].getLayoutParams();

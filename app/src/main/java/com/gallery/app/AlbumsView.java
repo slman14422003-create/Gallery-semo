@@ -82,6 +82,10 @@ public class AlbumsView extends LinearLayout {
         refresh();
     }
 
+    public void scrollToTop() {
+        rv.smoothScrollToPosition(0);
+    }
+
     public void refresh() {
         albums.clear();
         albums.addAll(Library.albums(act));

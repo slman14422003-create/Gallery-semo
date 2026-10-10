@@ -68,6 +68,14 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             }
         });
 
+        if (nav != null) {
+            nav.setOnReselect(idx -> {
+                if (idx == NavBar.PHOTOS) photos.scrollToTop();
+                else if (idx == NavBar.ALBUMS) albums.scrollToTop();
+                else if (idx == NavBar.SEARCH) search.focusSearch2();
+            });
+        }
+
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {

@@ -301,6 +301,7 @@ public class MediaGrid extends LinearLayout {
     }
 
     public void scrollToTop() {
+        if (glm.findFirstVisibleItemPosition() > 40) rv.scrollToPosition(12);   // long way up: jump close, then glide
         rv.smoothScrollToPosition(0);
     }
 

@@ -65,6 +65,11 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
     private FrameLayout root, stage, controls;
     private LinearLayout topBar, centerBar, bottomBar;
     private TextView titleTv, curTv, durTv, engineTv, hud, speedBtn;
+    // brightness / volume indicator (icon + gradient bar + percent), styled like the rest of the app
+    private LinearLayout levelHud;
+    private ImageView levelIcon;
+    private View levelFill;
+    private TextView levelText;
     private SeekBar seek;
     private ImageButton playBtn, lockFab;
     private SpinnerView spinner;
@@ -331,6 +336,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         hp.topMargin = Ui.dp(this, 120);
         root.addView(hud, hp);
+        buildLevelHud(root);
 
         spinner = new SpinnerView(this);
         root.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52), Gravity.CENTER));
@@ -614,8 +620,84 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
     }
 
     private final Runnable hudHide = () -> hud.setVisibility(View.GONE);
+    private final Runnable levelHide = () -> {
+        if (levelHud == null) return;
+        levelHud.animate().alpha(0f).setDuration(180).withEndAction(() -> levelHud.setVisibility(View.GONE)).start();
+    };
+
+    private void buildLevelHud(FrameLayout root) {
+        levelHud = new LinearLayout(this);
+        levelHud.setOrientation(LinearLayout.HORIZONTAL);
+        levelHud.setGravity(Gravity.CENTER_VERTICAL);
+        levelHud.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(Ui.dp(this, 100));
+        bg.setColor((Ui.color(this, R.color.surface) & 0x00FFFFFF) | 0xF2000000);
+        bg.setStroke(Ui.dp(this, 1), Ui.color(this, R.color.stroke));
+        levelHud.setBackground(bg);
+        levelHud.setElevation(Ui.dp(this, 6));
+        levelHud.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 18), Ui.dp(this, 10));
+
+        levelIcon = new ImageView(this);
+        levelIcon.setImageTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent_text)));
+        levelHud.addView(levelIcon, new LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24)));
+
+        FrameLayout track = new FrameLayout(this);
+        GradientDrawable tg = new GradientDrawable();
+        tg.setCornerRadius(Ui.dp(this, 6));
+        tg.setColor(Ui.color(this, R.color.neutral_soft));
+        track.setBackground(tg);
+        levelFill = new View(this);
+        GradientDrawable fg = new GradientDrawable();
+        fg.setCornerRadius(Ui.dp(this, 6));
+        fg.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
+        fg.setColors(new int[]{Ui.color(this, R.color.brand_start), Ui.color(this, R.color.brand_mid), Ui.color(this, R.color.brand_end)});
+        levelFill.setBackground(fg);
+        levelFill.setPivotX(0f);
+        track.addView(levelFill, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(Ui.dp(this, 120), Ui.dp(this, 6));
+        tp.setMargins(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
+        levelHud.addView(track, tp);
+
+        levelText = new TextView(this);
+        levelText.setTextColor(Ui.color(this, R.color.text_primary));
+        levelText.setTextSize(15);
+        levelText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        levelText.setMinWidth(Ui.dp(this, 42));
+        levelText.setGravity(Gravity.END);
+        levelHud.addView(levelText);
+
+        levelHud.setVisibility(View.GONE);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        lp.topMargin = Ui.dp(this, 120);
+        root.addView(levelHud, lp);
+    }
+
+    /** Shows the brightness / volume indicator: {@code frac} is 0..1. */
+    private void levelShow(int iconRes, float frac) {
+        if (levelHud == null) return;
+        frac = Math.max(0f, Math.min(1f, frac));
+        levelIcon.setImageResource(iconRes);
+        levelText.setText(String.format(Locale.US, "%d%%", Math.round(frac * 100f)));
+        levelFill.setScaleX(Math.max(0.01f, frac));
+        hud.setVisibility(View.GONE);
+        ui.removeCallbacks(hudHide);
+        levelHud.animate().cancel();
+        if (levelHud.getVisibility() != View.VISIBLE) {
+            levelHud.setAlpha(0f);
+            levelHud.setVisibility(View.VISIBLE);
+        }
+        levelHud.animate().alpha(1f).setDuration(120).start();
+        ui.removeCallbacks(levelHide);
+        ui.postDelayed(levelHide, 900);
+    }
 
     private void hudShow(String s) {
+        if (levelHud != null) {
+            levelHud.animate().cancel();
+            levelHud.setVisibility(View.GONE);
+            ui.removeCallbacks(levelHide);
+        }
         hud.setText(s);
         hud.setVisibility(View.VISIBLE);
         ui.removeCallbacks(hudHide);
@@ -717,12 +799,12 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
                     lp.screenBrightness = b;
                     getWindow().setAttributes(lp);
                     brightness = b;
-                    hudShow("☀ " + Math.round(b * 100) + "%");
+                    levelShow(R.drawable.ic_brightness, b);
                 } else if (axis[0] == 3) {
                     int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                     float vol = Math.max(0, Math.min(max, startVol[0] - ty / v.getHeight() * max * 1.4f));
                     audio.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(vol), 0);
-                    hudShow("🔊 " + Math.round(vol * 100f / max) + "%");
+                    levelShow(Math.round(vol) == 0 ? R.drawable.ic_volume_off : R.drawable.ic_volume, max > 0 ? vol / max : 0f);
                 }
                 return true;
             }
