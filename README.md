@@ -6,7 +6,7 @@
 - **الصور:** شبكة مجمّعة بالتاريخ، قرصة لتغيير الأعمدة، تحديد متعدد، مفضلة، ألبومات ذكية، بحث.
 - **العارض:** تكبير سلس، GIF/WebP متحرك، HEIC/AVIF (حسب نظام الجهاز)، تفاصيل EXIF والترميز.
 - **المشغّل المتقدم:** محرّكان — ExoPlayer (سريع، تسريع عتاد) وlibVLC (يشغّل تقريبًا كل الصيغ: MKV, AVI, WMV, FLV, RMVB, TS, MPEG, 3GP, HEVC, VP9, AV1, DTS, AC3, EAC3, FLAC…). يبدّل تلقائيًا عند عدم الدعم، أو يدويًا بالضغط على اسم المحرّك. إيماءات كاملة، سرعات، مسارات صوت/ترجمة (SRT, VTT, ASS/SSA, TTML), قفل، نافذة عائمة (PiP)، استئناف.
-- **محرّر الصور (بيتا 3) ومحرّر الفيديو (بيتا):** يحفظان نسخة جديدة دائمًا (`Pictures/Edited` و`Movies/Edited`) ولا يمسّان الأصل. محرّر الصور فيه زر "تحسين AI" محلي بالكامل (موازنة ألوان، تباين، حدّة، تقليل ضجيج) يحلّل الصورة على الجهاز نفسه بدون أي اتصال إنترنت أو نموذج يتحمّل.
+- **محرّر الصور (بيتا) ومحرّر الفيديو (بيتا):** يحفظان نسخة جديدة دائمًا (`Pictures/Edited` و`Movies/Edited`) ولا يمسّان الأصل.
 
 ## البناء
 GitHub Actions يبني تلقائيًا عند الدفع (`.github/workflows/build.yml`) وينشر Release موقّعًا. للتوقيع الدائم شغّل مرة واحدة سير العمل **Generate keystore** وأضف الأسرار كما في `SIGNING.md`. محليًا: `./gradlew assembleRelease` (JDK 17 وAndroid SDK 36).
@@ -19,5 +19,5 @@ GitHub Actions يبني تلقائيًا عند الدفع (`.github/workflows/b
 - المكتبة: `Media`, `MediaRepo`, `Library`, `Album`
 - الصور: `MainActivity`, `MediaGrid`, `Tile`, `AlbumsView`, `AlbumActivity`, `ViewerActivity`, `PhotoView`, `InfoSheet`
 - المشغّل: `PlayerActivity`, `PlayerEngine`, `ExoEngine`, `VlcEngine`, `AspectFrame`
-- المحرّرات: `ImageEditorActivity`, `EditorView`, `EditState`, `Renderer`, `AutoEnhance` (تحسين AI محلي بدون نت), `VideoEditorActivity`, `TrimBar`, `MediaSaver`
+- المحرّرات: `ImageEditorActivity`, `EditorView`, `EditState`, `Renderer`, `VideoEditorActivity`, `TrimBar`, `MediaSaver`
 - فتح من تطبيقات أخرى: `OpenActivity` · تحديثات: `Updater`, `UpdateActivity`, `Net`

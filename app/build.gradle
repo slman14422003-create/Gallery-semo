@@ -1,0 +1,134 @@
+import java.util.Properties
+
+plugins {
+    id 'com.android.application'
+}
+
+// Release signing: CI passes SIGNING_* environment variables; locally keystore.properties is used.
+// Without a key the release build is signed with the debug key so the APK is still installable locally.
+// CI never publishes such a build (the debug key differs on every runner, so updates would be rejected).
+def keystoreProps = new Properties()
+def keystoreFile = rootProject.file('keystore.properties')
+if (keystoreFile.exists()) {
+    keystoreFile.withInputStream { keystoreProps.load(it) }
+}
+def signStore = System.getenv('SIGNING_STORE_FILE') ?: keystoreProps.getProperty('storeFile')
+def signStorePass = System.getenv('SIGNING_STORE_PASSWORD') ?: keystoreProps.getProperty('storePassword')
+def signAlias = System.getenv('SIGNING_KEY_ALIAS') ?: keystoreProps.getProperty('keyAlias')
+def signKeyPass = System.getenv('SIGNING_KEY_PASSWORD') ?: keystoreProps.getProperty('keyPassword')
+def hasSigning = signStore && signStorePass && signAlias && signKeyPass
+
+android {
+    namespace = 'com.gallery.app'
+    compileSdk = 36   // Android 16
+
+    defaultConfig {
+        applicationId = "app.gallery.studio"
+        minSdk = 24
+        targetSdk = 36
+        // CI run number keeps versionCode increasing so a new build always installs over the old one
+        versionCode = (System.getenv('VERSION_CODE_OVERRIDE') ?: (10 + (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()).toString()).toInteger()
+        versionName = System.getenv('APP_VERSION_NAME') ?: "1.0"
+        // GitHub repo (owner/repo) the in-app updater reads releases from; CI sets it automatically
+        buildConfigField 'String', 'UPDATE_REPO', "\"${System.getenv('UPDATE_REPO') ?: ''}\""
+        // libVLC ships native code for every CPU; keep the two that real phones use so the APK stays reasonable
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // keep only the two languages the app ships (drops the translations bundled inside appcompat / media3 / libVLC)
+    androidResources {
+        localeFilters.addAll(['ar', 'en'])
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
+    signingConfigs {
+        release {
+            if (hasSigning) {
+                storeFile = file(signStore)
+                storePassword = signStorePass
+                keyAlias = signAlias
+                keyPassword = signKeyPass
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            debuggable = false
+            // R8 (full mode): shrinks code, optimises, obfuscates; shrinkResources removes unused resources
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = hasSigning ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
+    packaging {
+        resources.excludes += [
+                '/META-INF/{AL2.0,LGPL2.1}',
+                '/META-INF/*.version',
+                '/META-INF/*.kotlin_module',
+                '/META-INF/DEPENDENCIES',
+                '/META-INF/LICENSE*',
+                '/META-INF/NOTICE*',
+                '/META-INF/INDEX.LIST',
+                '/kotlin/**',
+                '**/*.kotlin_builtins',
+                '**/*.kotlin_metadata',
+                'DebugProbesKt.bin',
+                'kotlin-tooling-metadata.json'
+        ]
+        // libVLC's native libraries are by far the biggest part of the APK: store them compressed (the APK
+        // download shrinks by roughly half; the system extracts them once at install time)
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+dependencies {
+    // Aligns every Kotlin artifact to one version (fixes "Duplicate class kotlin.collections.jdk8...")
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.viewpager2:viewpager2:1.1.0'
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+
+    // Images and thumbnails (photos, GIF, animated WebP, video frames), cached on disk
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+
+    // Video engine 1: ExoPlayer (Media3) - hardware decoding, subtitles, audio tracks; Transformer = the video editor's exporter
+    def media3 = '1.8.0'
+    implementation "androidx.media3:media3-exoplayer:$media3"
+    implementation "androidx.media3:media3-ui:$media3"
+    implementation "androidx.media3:media3-transformer:$media3"
+    implementation "androidx.media3:media3-effect:$media3"
+    implementation "androidx.media3:media3-common:$media3"
+
+    // Video engine 2: libVLC - plays what ExoPlayer cannot (AVI, WMV, FLV, RMVB, DTS/AC3 audio, exotic codecs)
+    implementation 'org.videolan.android:libvlc-all:3.6.0'
+}
