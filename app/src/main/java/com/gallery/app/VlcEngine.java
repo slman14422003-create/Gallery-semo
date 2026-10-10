@@ -5,7 +5,6 @@ import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.view.View;
 
-import org.videolan.libvlc.IMedia;
 import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.MediaPlayer;
 import org.videolan.libvlc.util.VLCVideoLayout;
@@ -169,7 +168,7 @@ final class VlcEngine implements PlayerEngine {
     @Override
     public void addSubtitle(Uri sub, String ext) {
         try {
-            mp.addSlave(IMedia.Slave.Type.Subtitle, sub, true);
+            mp.addSlave(0, sub, true);   // 0 = IMedia.Slave.Type.Subtitle (the interface moved packages in libVLC 3.6)
         } catch (Exception ignored) {
         }
     }
