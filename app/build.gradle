@@ -126,7 +126,7 @@ dependencies {
     implementation 'com.google.mlkit:translate:17.0.3'
     implementation 'com.google.mlkit:language-id:17.0.6'
     implementation 'com.google.android.gms:play-services-tasks:18.2.0'
-    implementation 'cz.adaptive:tesseract4android:4.7.0'
+    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.9.0'
 
     // Video engine 1: ExoPlayer (Media3) - hardware decoding, subtitles, audio tracks; Transformer = the video editor's exporter
     def media3 = '1.8.0'

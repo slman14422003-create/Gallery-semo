@@ -163,12 +163,10 @@ public class VideoEditorActivity extends BaseActivity {
         player.addListener(new Player.Listener() {
             @Override
             public void onVideoSizeChanged(androidx.media3.common.VideoSize v) {
-                if (v.width > 0 && v.height > 0) {
+                if (v.width > 0 && v.height > 0 && srcW == 0) {
+                    srcW = v.width;
+                    srcH = v.height;
                     frame.setVideoRatio(v.width * v.pixelWidthHeightRatio / v.height);
-                    if (srcW == 0) {
-                        srcW = v.width;
-                        srcH = v.height;
-                    }
                 }
             }
 
@@ -428,10 +426,13 @@ public class VideoEditorActivity extends BaseActivity {
 
     private void applyEffects() {
         dirty = true;
+        boolean odd = rot % 2 == 1;
+        float base = srcW > 0 && srcH > 0 ? (odd ? (float) srcH / srcW : (float) srcW / srcH) : 0f;
+        frame.setVideoRatio(ratioIdx != 0 ? RATIOS[ratioIdx] : base);
         try {
             player.setVideoEffects(effects());
-        } catch (Throwable ignored) {
-            // the preview just stays plain; the export still applies the edits
+        } catch (Throwable t) {
+            Toast.makeText(this, getString(R.string.error) + ": " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -512,7 +513,8 @@ public class VideoEditorActivity extends BaseActivity {
             if (progressDialog != null) progressDialog.dismiss();
             if (error != null) {
                 tmp.delete();
-                Toast.makeText(this, getString(R.string.export_failed), Toast.LENGTH_LONG).show();
+                String why = error instanceof ExportException ? ((ExportException) error).getErrorCodeName() : error.getClass().getSimpleName();
+                Toast.makeText(this, getString(R.string.export_failed) + " (" + why + ")", Toast.LENGTH_LONG).show();
                 return;
             }
             new Thread(() -> {

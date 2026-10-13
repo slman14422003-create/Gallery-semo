@@ -45,3 +45,10 @@
 -keep class com.googlecode.tesseract.android.** { *; }
 -keep class com.googlecode.leptonica.android.** { *; }
 -dontwarn com.google.mlkit.**
+
+# Media3 loads its effect / video-graph classes by reflection; without these the editor preview and export ignore every edit
+-keep class androidx.media3.effect.** { *; }
+-keep class androidx.media3.transformer.** { *; }
+-keep class androidx.media3.exoplayer.video.** { *; }
+-keep class androidx.media3.exoplayer.ExoPlayerImpl { *; }
+-dontwarn androidx.media3.**
