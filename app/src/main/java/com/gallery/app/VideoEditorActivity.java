@@ -73,7 +73,9 @@ public class VideoEditorActivity extends BaseActivity {
     private int rot = 0;
     private boolean flipH = false, flipV = false, mute = false;
     private int ratioIdx = 0, look = 0;
-    private float brightness = 0f, contrast = 0f;
+    private float brightness = 0f, contrast = 0f, aiWarm = 0f, aiSat = 0f;
+    private SeekBar sbBright, sbContrast;
+    private boolean aiBusy = false;
     private int srcW = 0, srcH = 0;
     private long duration = 0;
 
@@ -124,7 +126,7 @@ public class VideoEditorActivity extends BaseActivity {
         tl.setGravity(Gravity.CENTER_VERTICAL);
         tl.addView(title);
         TextView beta = new TextView(this);
-        beta.setText(R.string.beta);
+        beta.setText(R.string.beta2);
         beta.setTextSize(10.5f);
         beta.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         beta.setTextColor(Ui.color(this, R.color.accent_text));
@@ -253,6 +255,25 @@ public class VideoEditorActivity extends BaseActivity {
         ops.addView(muteBtn, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 48)));
         tools.addView(ops);
 
+        tools.addView(Ui.label(this, getString(R.string.v_ai)));
+        HorizontalScrollView aiScroll = new HorizontalScrollView(this);
+        aiScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout aiRow = new LinearLayout(this);
+        TextView aiAuto = Ui.chip(this, "\u2728  " + getString(R.string.ad_auto), false);
+        aiAuto.setOnClickListener(v -> aiEnhance());
+        aiRow.addView(aiAuto);
+        TextView aiLow = Ui.chip(this, getString(R.string.v_lowlight), false);
+        aiLow.setOnClickListener(v -> preset(0.14f, 0.12f, 0f, 12f));
+        aiRow.addView(aiLow);
+        TextView aiHaze = Ui.chip(this, getString(R.string.v_dehaze), false);
+        aiHaze.setOnClickListener(v -> preset(-0.03f, 0.25f, 0f, 22f));
+        aiRow.addView(aiHaze);
+        TextView aiTrim = Ui.chip(this, getString(R.string.v_smart_trim), false);
+        aiTrim.setOnClickListener(v -> aiSmartTrim());
+        aiRow.addView(aiTrim);
+        aiScroll.addView(aiRow);
+        tools.addView(aiScroll);
+
         tools.addView(Ui.label(this, getString(R.string.crop_ratio)));
         tools.addView(chipRow(RATIO_NAMES, 0, i -> {
             ratioIdx = i;
@@ -263,14 +284,18 @@ public class VideoEditorActivity extends BaseActivity {
             look = i;
             applyEffects();
         }));
-        tools.addView(slider(R.string.ad_brightness, v -> {
+        View bs = slider(R.string.ad_brightness, v -> {
             brightness = v;
             applyEffects();
-        }));
-        tools.addView(slider(R.string.ad_contrast, v -> {
+        });
+        sbBright = (SeekBar) ((LinearLayout) bs).getChildAt(1);
+        tools.addView(bs);
+        View cs = slider(R.string.ad_contrast, v -> {
             contrast = v;
             applyEffects();
-        }));
+        });
+        sbContrast = (SeekBar) ((LinearLayout) cs).getChildAt(1);
+        tools.addView(cs);
         TextView note = Ui.noteCard(this, getString(R.string.video_beta_note), R.color.text_secondary);
         tools.addView(note);
         sv2.addView(tools);
@@ -334,13 +359,22 @@ public class VideoEditorActivity extends BaseActivity {
         sb.setProgress(100);
         sb.setProgressTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
         sb.setThumbTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
+        final float[] pending = new float[1];
+        final Runnable fire = () -> cb.on(pending[0]);
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar s, int p, boolean u) { }
+            @Override
+            public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
+                if (!fromUser) return;
+                pending[0] = (p - 100) / 100f * 0.6f;
+                ui.removeCallbacks(fire);
+                ui.postDelayed(fire, 60);
+            }
 
             @Override public void onStartTrackingTouch(SeekBar s) { }
 
             @Override
             public void onStopTrackingTouch(SeekBar s) {
+                ui.removeCallbacks(fire);
                 cb.on((s.getProgress() - 100) / 100f * 0.6f);
             }
         });
@@ -419,6 +453,8 @@ public class VideoEditorActivity extends BaseActivity {
                 break;
             default:
         }
+        if (aiWarm != 0f) v.add(new RgbAdjustment.Builder().setRedScale(1f + 0.12f * aiWarm).setBlueScale(1f - 0.12f * aiWarm).build());
+        if (aiSat != 0f) v.add(new HslAdjustment.Builder().adjustSaturation(aiSat).build());
         if (brightness != 0f) v.add(new Brightness(brightness));
         if (contrast != 0f) v.add(new Contrast(contrast));
         return v;
@@ -431,9 +467,106 @@ public class VideoEditorActivity extends BaseActivity {
         frame.setVideoRatio(ratioIdx != 0 ? RATIOS[ratioIdx] : base);
         try {
             player.setVideoEffects(effects());
+            if (!player.isPlaying()) player.seekTo(player.getCurrentPosition());
         } catch (Throwable t) {
             Toast.makeText(this, getString(R.string.error) + ": " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    // ------------------------------------------------------------------ AI tools (on device, no network)
+
+    private void syncSliders() {
+        if (sbBright != null) sbBright.setProgress(Math.max(0, Math.min(200, Math.round(brightness / 0.6f * 100f) + 100)));
+        if (sbContrast != null) sbContrast.setProgress(Math.max(0, Math.min(200, Math.round(contrast / 0.6f * 100f) + 100)));
+    }
+
+    private void preset(float b, float c, float warm, float sat) {
+        brightness = b;
+        contrast = c;
+        aiWarm = warm;
+        aiSat = sat;
+        syncSliders();
+        applyEffects();
+    }
+
+    private Bitmap frameAt(MediaMetadataRetriever r, long ms, int maxSide) {
+        Bitmap b = r.getFrameAtTime(ms * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+        if (b == null) return null;
+        float k = Math.min(1f, maxSide / (float) Math.max(b.getWidth(), b.getHeight()));
+        if (k >= 1f) return b;
+        return Bitmap.createScaledBitmap(b, Math.max(8, Math.round(b.getWidth() * k)), Math.max(8, Math.round(b.getHeight() * k)), true);
+    }
+
+    private void aiEnhance() {
+        if (aiBusy) return;
+        aiBusy = true;
+        Toast.makeText(this, R.string.v_working, Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            AutoEnhance.Result res = null;
+            MediaMetadataRetriever r = new MediaMetadataRetriever();
+            try {
+                r.setDataSource(this, media.uri);
+                Bitmap f = frameAt(r, Math.max(0, duration / 2), 320);
+                if (f != null) res = AutoEnhance.analyze(f);
+            } catch (Throwable ignored) {
+            } finally {
+                try {
+                    r.release();
+                } catch (Throwable ignored) {
+                }
+            }
+            final AutoEnhance.Result out = res;
+            runOnUiThread(() -> {
+                aiBusy = false;
+                if (isDestroyed() || out == null) return;
+                preset(Math.max(-0.3f, Math.min(0.3f, out.brightness * 0.4f)),
+                        Math.max(-0.3f, Math.min(0.4f, out.contrast * 0.6f)),
+                        out.warmth, Math.max(-30f, Math.min(40f, out.saturation * 40f)));
+            });
+        }).start();
+    }
+
+    /** Samples frames and cuts away black lead-in / lead-out. */
+    private void aiSmartTrim() {
+        if (aiBusy || duration <= 0) return;
+        aiBusy = true;
+        Toast.makeText(this, R.string.v_working, Toast.LENGTH_SHORT).show();
+        final long d = duration;
+        new Thread(() -> {
+            final int n = 24;
+            boolean[] black = new boolean[n];
+            MediaMetadataRetriever r = new MediaMetadataRetriever();
+            try {
+                r.setDataSource(this, media.uri);
+                for (int i = 0; i < n; i++) black[i] = AiTools.isDark(frameAt(r, d * i / (n - 1), 64));
+            } catch (Throwable t) {
+                java.util.Arrays.fill(black, false);
+            } finally {
+                try {
+                    r.release();
+                } catch (Throwable ignored) {
+                }
+            }
+            int a = 0;
+            while (a < n && black[a]) a++;
+            int z = n - 1;
+            while (z >= 0 && black[z]) z--;
+            final boolean none = a >= n || (a == 0 && z == n - 1);
+            final long s = a == 0 ? 0 : d * (a - 1) / (n - 1);
+            final long e = z == n - 1 ? d : d * (z + 1) / (n - 1);
+            runOnUiThread(() -> {
+                aiBusy = false;
+                if (isDestroyed()) return;
+                if (none || e - s < 300) {
+                    Toast.makeText(this, R.string.v_trim_none, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                trim.setRange(s, e);
+                player.seekTo(s);
+                updateRange();
+                dirty = true;
+            });
+        }).start();
     }
 
     // ------------------------------------------------------------------ export

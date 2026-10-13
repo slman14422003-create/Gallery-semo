@@ -1,5 +1,6 @@
 package com.gallery.app;
 
+import android.animation.ValueAnimator;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -9,6 +10,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 
+import java.util.ArrayList;
 import java.util.List;
 
 final class OcrLayer {
@@ -31,6 +33,8 @@ final class OcrLayer {
     private final float radius;
     private final float knobR;
     private final float grab;
+    private float flash = 1f;
+    private ValueAnimator flashAnim;
     private int sel0 = -1;
     private int sel1 = -1;
     private boolean drag;
@@ -63,9 +67,17 @@ final class OcrLayer {
         slop = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
         pad = 2f * d;
         radius = 4f * d;
-        knobR = 5f * d;
+        knobR = 6f * d;
         grab = 30f * d;
         rects = new RectF[res.words.size()];
+        flashAnim = ValueAnimator.ofFloat(1f, 0f);
+        flashAnim.setStartDelay(500);
+        flashAnim.setDuration(1300);
+        flashAnim.addUpdateListener(a -> {
+            flash = (float) a.getAnimatedValue();
+            view.invalidate();
+        });
+        flashAnim.start();
         for (int i = 0; i < rects.length; i++) rects[i] = new RectF();
         fill.setStyle(Paint.Style.FILL);
         fill.setColor(0x26FFFFFF);
@@ -73,15 +85,16 @@ final class OcrLayer {
         stroke.setStrokeWidth(1.2f * d);
         stroke.setColor(0x99FFD60A);
         sel.setStyle(Paint.Style.FILL);
-        sel.setColor(0x66007AFF);
+        sel.setColor(0x590A84FF);
         under.setStyle(Paint.Style.STROKE);
-        under.setStrokeWidth(2f * d);
-        under.setColor(0xFF4DA3FF);
+        under.setStrokeWidth(2.2f * d);
+        under.setColor(0xFF0A84FF);
         knob.setStyle(Paint.Style.FILL);
         knob.setColor(0xFF0A84FF);
     }
 
     void release() {
+        if (flashAnim != null) flashAnim.cancel();
         view.removeCallbacks(longPress);
         view.setLayer(null);
     }
@@ -152,40 +165,58 @@ final class OcrLayer {
         return false;
     }
 
-    private float[] startHandle() {
-        RectF r = rects[sel0];
-        return new float[]{rtl(res.words.get(sel0).text) ? r.right : r.left, r.top - knobR, r.top, r.bottom};
+    private List<RectF> lines(int from, int to) {
+        List<RectF> out = new ArrayList<>();
+        RectF cur = null;
+        int curLine = -1;
+        for (int i = Math.max(0, from); i <= to && i < rects.length; i++) {
+            int ln = res.words.get(i).line;
+            if (cur == null || ln != curLine) {
+                cur = new RectF(rects[i]);
+                out.add(cur);
+                curLine = ln;
+            } else {
+                cur.union(rects[i]);
+            }
+        }
+        return out;
     }
 
-    private float[] endHandle() {
-        RectF r = rects[sel1];
-        return new float[]{rtl(res.words.get(sel1).text) ? r.left : r.right, r.bottom + knobR, r.top, r.bottom};
+    boolean selectionBounds(RectF out) {
+        if (sel0 < 0 || !layout()) return false;
+        List<RectF> ls = lines(sel0, sel1);
+        if (ls.isEmpty()) return false;
+        out.set(ls.get(0));
+        for (RectF r : ls) out.union(r);
+        return true;
+    }
+
+    private float[] handles() {
+        List<RectF> ls = lines(sel0, sel1);
+        RectF f = ls.get(0);
+        RectF l = ls.get(ls.size() - 1);
+        float sx = rtl(res.words.get(sel0).text) ? f.right : f.left;
+        float ex = rtl(res.words.get(sel1).text) ? l.left : l.right;
+        return new float[]{sx, f.top - knobR, f.top, f.bottom, ex, l.bottom + knobR, l.top, l.bottom};
     }
 
     void draw(Canvas c) {
         if (!layout()) return;
-        for (int i = 0; i < rects.length; i++) {
-            RectF r = rects[i];
-            if (selected(i)) {
-                c.drawRoundRect(r, radius, radius, sel);
-            } else {
+        if (flash > 0.01f) {
+            fill.setAlpha((int) (46 * flash));
+            stroke.setAlpha((int) (230 * flash));
+            for (RectF r : lines(0, rects.length - 1)) {
                 c.drawRoundRect(r, radius, radius, fill);
                 c.drawRoundRect(r, radius, radius, stroke);
             }
         }
-        for (OcrEntity e : res.entities()) {
-            for (int i = e.from; i <= e.to && i < rects.length; i++) {
-                RectF r = rects[i];
-                c.drawLine(r.left, r.bottom, r.right, r.bottom, under);
-            }
-        }
-        if (sel0 >= 0 && !drag) {
-            float[] s = startHandle();
-            float[] e = endHandle();
-            c.drawLine(s[0], s[2], s[0], s[3], under);
-            c.drawLine(e[0], e[2], e[0], e[3], under);
-            c.drawCircle(s[0], s[1], knobR, knob);
-            c.drawCircle(e[0], e[1], knobR, knob);
+        if (sel0 >= 0) {
+            for (RectF r : lines(sel0, sel1)) c.drawRoundRect(r, radius * 0.6f, radius * 0.6f, sel);
+            float[] h = handles();
+            c.drawLine(h[0], h[2], h[0], h[3], under);
+            c.drawLine(h[4], h[6], h[4], h[7], under);
+            c.drawCircle(h[0], h[1], knobR, knob);
+            c.drawCircle(h[4], h[5], knobR, knob);
         }
     }
 
@@ -240,19 +271,17 @@ final class OcrLayer {
         downX = x;
         downY = y;
         if (sel0 >= 0) {
-            float[] s = startHandle();
-            float[] en = endHandle();
-            if (Math.hypot(x - s[0], y - s[1]) < grab) {
+            listener.onSelection(false);
+            float[] h = handles();
+            if (Math.hypot(x - h[0], y - h[1]) < grab || (Math.abs(x - h[0]) < grab / 2 && y > h[2] && y < h[3])) {
                 drag = true;
                 anchor = sel1;
-                listener.onSelection(false);
                 view.invalidate();
                 return true;
             }
-            if (Math.hypot(x - en[0], y - en[1]) < grab) {
+            if (Math.hypot(x - h[4], y - h[5]) < grab || (Math.abs(x - h[4]) < grab / 2 && y > h[6] && y < h[7])) {
                 drag = true;
                 anchor = sel0;
-                listener.onSelection(false);
                 view.invalidate();
                 return true;
             }

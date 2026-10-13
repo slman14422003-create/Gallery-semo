@@ -47,6 +47,12 @@ final class TrimBar extends View {
         invalidate();
     }
 
+    void setRange(long s, long e) {
+        start = Math.max(0, Math.min(s, dur - 1));
+        end = Math.min(dur, Math.max(start + 1, e));
+        invalidate();
+    }
+
     void setThumbs(List<Bitmap> t) {
         thumbs.clear();
         thumbs.addAll(t);

@@ -50,6 +50,7 @@ final class EditState {
     float cl = 0f, ct = 0f, cr = 1f, cb = 1f;   // crop, normalised on the rotated image
     float exposure, brightness, contrast, saturation, warmth, tint, fade;   // -1..1 (fade 0..1)
     float sharpen, grain, vignette, denoise;                                // 0..1
+    float dehaze, clarity, shadows;                                         // 0..1 (local AI tools)
     int filter;
     float filterAmt = 1f;            // how strongly the filter is applied (0..1)
     final List<Stroke> strokes = new ArrayList<>();
@@ -76,6 +77,9 @@ final class EditState {
         s.grain = grain;
         s.vignette = vignette;
         s.denoise = denoise;
+        s.dehaze = dehaze;
+        s.clarity = clarity;
+        s.shadows = shadows;
         s.filter = filter;
         s.filterAmt = filterAmt;
         for (Stroke k : strokes) s.strokes.add(k.copy());
@@ -86,7 +90,8 @@ final class EditState {
     /** True when any colour / light adjustment or filter is active (the pixels need the colour pass). */
     boolean colorChanged() {
         return filter != 0 || exposure != 0 || brightness != 0 || contrast != 0 || saturation != 0 || warmth != 0
-                || tint != 0 || fade != 0 || sharpen != 0 || grain != 0 || vignette != 0 || denoise != 0;
+                || tint != 0 || fade != 0 || sharpen != 0 || grain != 0 || vignette != 0 || denoise != 0
+                || dehaze != 0 || clarity != 0 || shadows != 0;
     }
 
     boolean changed() {
@@ -105,5 +110,6 @@ final class EditState {
     void resetAdjust() {
         exposure = brightness = contrast = saturation = warmth = tint = fade = 0f;
         sharpen = grain = vignette = denoise = 0f;
+        dehaze = clarity = shadows = 0f;
     }
 }

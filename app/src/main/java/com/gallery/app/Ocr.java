@@ -29,7 +29,7 @@ final class Ocr {
     private static final LruCache<String, OcrResult> CACHE = new LruCache<>(12);
 
     interface Callback {
-        void onProgress(int msg);
+        void onDownload(int percent);
 
         void onDone(OcrResult r);
 
@@ -67,15 +67,20 @@ final class Ocr {
             FutureTarget<Bitmap> ft = null;
             try {
                 if (TESS.equals(eng) && !TessEngine.ready(app)) {
-                    MAIN.post(() -> cb.onProgress(R.string.ocr_download));
+                    MAIN.post(() -> cb.onDownload(0));
+                    final int[] last = {-1};
                     try {
-                        TessEngine.download(app);
+                        TessEngine.download(app, pct -> {
+                            if (pct == last[0]) return;
+                            last[0] = pct;
+                            MAIN.post(() -> cb.onDownload(pct));
+                        });
                     } catch (IOException e) {
                         MAIN.post(() -> cb.onError(R.string.ocr_download_failed));
                         return;
                     }
                 }
-                MAIN.post(() -> cb.onProgress(R.string.ocr_scanning));
+                MAIN.post(() -> cb.onDownload(-1));
                 ft = Glide.with(app).asBitmap().load(m.uri).override(MAX_SIDE, MAX_SIDE)
                         .downsample(DownsampleStrategy.AT_MOST).submit();
                 Bitmap bmp = ft.get();

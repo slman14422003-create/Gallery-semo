@@ -178,6 +178,8 @@ final class Renderer {
         if (tone) p.setColorFilter(new ColorMatrixColorFilter(matrix(s)));
         c.drawBitmap(src, 0, 0, p);
         float w = out.getWidth(), h = out.getHeight();
+        if (s.dehaze > 0.01f) AiTools.dehaze(out, s.dehaze);
+        if (s.clarity > 0.01f || s.shadows > 0.01f) AiTools.localTone(out, s.clarity, s.shadows);
         if (s.denoise > 0.01f) denoise(out, s.denoise);
         if (s.sharpen > 0.01f) sharpen(out, s.sharpen);
         if (s.vignette > 0) {

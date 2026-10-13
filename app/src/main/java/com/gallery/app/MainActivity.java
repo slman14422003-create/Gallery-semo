@@ -46,7 +46,16 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // swaps the splash theme (Theme.App.Starting) for the real AppCompat theme; without this the app crashes at launch
-        SplashScreen.installSplashScreen(this);
+        SplashScreen splash = SplashScreen.installSplashScreen(this);
+        splash.setOnExitAnimationListener(provider -> {
+            final View sv = provider.getView();
+            View ic = provider.getIconView();
+            if (ic != null) {
+                ic.animate().scaleX(1.7f).scaleY(1.7f).alpha(0f).setDuration(360)
+                        .setInterpolator(new android.view.animation.AccelerateInterpolator(1.2f)).start();
+            }
+            sv.animate().alpha(0f).setStartDelay(140).setDuration(320).withEndAction(() -> provider.remove()).start();
+        });
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -54,6 +63,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         stage = new FrameLayout(this);
         root.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
         setContentView(root);
+        root.setAlpha(0f);
+        root.animate().alpha(1f).setStartDelay(160).setDuration(420).start();
 
         photos = new MediaGrid(this, MediaGrid.PHOTOS);
         albums = new AlbumsView(this);

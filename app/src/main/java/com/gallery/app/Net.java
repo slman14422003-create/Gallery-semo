@@ -43,10 +43,15 @@ final class Net {
         }
     }
 
-    static void download(String url, java.io.File dest, long max) throws IOException {
+    interface Progress {
+        void on(long done, long total);
+    }
+
+    static void download(String url, java.io.File dest, long max, Progress p) throws IOException {
         HttpURLConnection h = get(url, "application/octet-stream");
         try {
             if (h.getResponseCode() != 200) throw new IOException("http");
+            long len = h.getContentLengthLong();
             try (java.io.InputStream in = h.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(dest)) {
                 byte[] buf = new byte[32768];
                 long total = 0;
@@ -55,6 +60,7 @@ final class Net {
                     out.write(buf, 0, n);
                     total += n;
                     if (total > max) throw new IOException("size");
+                    if (p != null) p.on(total, len);
                 }
             }
         } finally {

@@ -7,7 +7,7 @@
     android:viewportHeight="108">
     <group android:name="mark" android:pivotX="54" android:pivotY="54" android:scaleX="1.25" android:scaleY="1.25">
         <group android:name="petals" android:pivotX="54" android:pivotY="54">
-            <group android:pivotX="54" android:pivotY="54" android:rotation="0">
+            <group android:name="p0" android:pivotX="54" android:pivotY="54" android:rotation="0">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -19,7 +19,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="45">
+            <group android:name="p1" android:pivotX="54" android:pivotY="54" android:rotation="45">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -31,7 +31,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="90">
+            <group android:name="p2" android:pivotX="54" android:pivotY="54" android:rotation="90">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -43,7 +43,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="135">
+            <group android:name="p3" android:pivotX="54" android:pivotY="54" android:rotation="135">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -55,7 +55,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="180">
+            <group android:name="p4" android:pivotX="54" android:pivotY="54" android:rotation="180">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -67,7 +67,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="225">
+            <group android:name="p5" android:pivotX="54" android:pivotY="54" android:rotation="225">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -79,7 +79,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="270">
+            <group android:name="p6" android:pivotX="54" android:pivotY="54" android:rotation="270">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -91,7 +91,7 @@
                     </aapt:attr>
                 </path>
             </group>
-            <group android:pivotX="54" android:pivotY="54" android:rotation="315">
+            <group android:name="p7" android:pivotX="54" android:pivotY="54" android:rotation="315">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">
                     <aapt:attr name="android:fillColor">
                         <gradient android:centerX="54" android:centerY="54" android:gradientRadius="36" android:type="radial">
@@ -104,6 +104,7 @@
                 </path>
             </group>
         </group>
+        <group android:name="core" android:pivotX="54" android:pivotY="54">
         <path android:pathData="M46,54a8,8 0 1,0 16,0a8,8 0 1,0 -16,0Z">
             <aapt:attr name="android:fillColor">
                 <gradient android:centerX="54" android:centerY="54" android:gradientRadius="8" android:type="radial">
@@ -113,5 +114,6 @@
                 </gradient>
             </aapt:attr>
         </path>
+        </group>
     </group>
 </vector>

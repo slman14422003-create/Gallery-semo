@@ -5,7 +5,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:name="mark" android:pivotX="54" android:pivotY="54">
+    <group android:name="mark" android:pivotX="54" android:pivotY="54" android:scaleX="0.7" android:scaleY="0.7">
         <group android:name="petals" android:pivotX="54" android:pivotY="54">
             <group android:pivotX="54" android:pivotY="54" android:rotation="0">
                 <path android:pathData="M44.4,34a9.6,14.6 0 1,0 19.2,0a9.6,14.6 0 1,0 -19.2,0Z">

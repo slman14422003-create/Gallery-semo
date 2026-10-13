@@ -29,19 +29,37 @@ final class TessEngine implements OcrEngine {
         return true;
     }
 
-    static void download(Context c) throws IOException {
+    interface Progress {
+        void on(int percent);
+    }
+
+    static void download(Context c, final Progress cb) throws IOException {
+        final long[] size = {1_500_000L, 4_100_000L};
         File dir = data(c);
         if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("dir");
-        for (String l : LANGS) {
+        if (cb != null) cb.on(0);
+        for (int i = 0; i < LANGS.length; i++) {
+            final int idx = i;
+            String l = LANGS[i];
             File f = new File(dir, l + ".traineddata");
             if (f.length() >= MIN_BYTES) continue;
             File tmp = new File(dir, l + ".part");
-            Net.download(BASE + l + ".traineddata", tmp, MAX_BYTES);
+            Net.download(BASE + l + ".traineddata", tmp, MAX_BYTES, (done, total) -> {
+                if (total > 0) size[idx] = total;
+                long all = 0;
+                long before = 0;
+                for (int j = 0; j < size.length; j++) {
+                    all += size[j];
+                    if (j < idx) before += size[j];
+                }
+                if (cb != null && all > 0) cb.on((int) Math.min(99, 100 * (before + done) / all));
+            });
             if (tmp.length() < MIN_BYTES || !tmp.renameTo(f)) {
                 tmp.delete();
                 throw new IOException("bad file");
             }
         }
+        if (cb != null) cb.on(100);
     }
 
     @Override

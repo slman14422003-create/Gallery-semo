@@ -11,7 +11,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ProgressBar;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -51,8 +50,13 @@ public class ViewerActivity extends BaseActivity {
     private int liveGen;
     private OcrLayer layer;
     private ProgressBar busy;
-    private HorizontalScrollView pill;
-    private LinearLayout pillRow;
+    private LinearLayout menu;
+    private FrameLayout rootView;
+    private final List<Object[]> menuItems = new ArrayList<>();
+    private int menuPage;
+    private androidx.appcompat.app.AlertDialog dlDialog;
+    private ProgressBar dlBar;
+    private TextView dlText;
     private OnBackPressedCallback liveBack;
 
     @Override
@@ -149,25 +153,17 @@ public class ViewerActivity extends BaseActivity {
         blp.bottomMargin = Ui.dp(this, 16);
         root.addView(bottomBar, blp);
 
-        pill = new HorizontalScrollView(this);
-        pill.setHorizontalScrollBarEnabled(false);
-        pill.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        pill.setVisibility(View.GONE);
-        GradientDrawable pg = new GradientDrawable();
-        pg.setCornerRadius(Ui.dp(this, 22));
-        pg.setColor(0xF02C2C2E);
-        pill.setBackground(pg);
-        pill.setClipToOutline(true);
-        pillRow = new LinearLayout(this);
-        pillRow.setOrientation(LinearLayout.HORIZONTAL);
-        pillRow.setGravity(Gravity.CENTER_VERTICAL);
-        pillRow.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
-        pill.addView(pillRow, new FrameLayout.LayoutParams(-2, Ui.dp(this, 44)));
-        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        plp.setMarginStart(Ui.dp(this, 12));
-        plp.setMarginEnd(Ui.dp(this, 12));
-        plp.bottomMargin = Ui.dp(this, 92);
-        root.addView(pill, plp);
+        rootView = root;
+        menu = new LinearLayout(this);
+        menu.setOrientation(LinearLayout.HORIZONTAL);
+        menu.setGravity(Gravity.CENTER_VERTICAL);
+        menu.setVisibility(View.GONE);
+        GradientDrawable mg = new GradientDrawable();
+        mg.setCornerRadius(Ui.dp(this, 12));
+        mg.setColor(0xF2262628);
+        menu.setBackground(mg);
+        menu.setElevation(Ui.dp(this, 6));
+        root.addView(menu, new FrameLayout.LayoutParams(-2, Ui.dp(this, 42), Gravity.TOP | Gravity.LEFT));
 
         busy = new ProgressBar(this);
         busy.setIndeterminateTintList(ColorStateList.valueOf(0xFFFFFFFF));
@@ -188,9 +184,6 @@ public class ViewerActivity extends BaseActivity {
             FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bottomBar.getLayoutParams();
             p.bottomMargin = Ui.dp(this, 16) + b.bottom;
             bottomBar.setLayoutParams(p);
-            FrameLayout.LayoutParams q = (FrameLayout.LayoutParams) pill.getLayoutParams();
-            q.bottomMargin = Ui.dp(this, 92) + b.bottom;
-            pill.setLayoutParams(q);
             return insets;
         });
 
@@ -292,14 +285,16 @@ public class ViewerActivity extends BaseActivity {
         busy.setVisibility(View.VISIBLE);
         Ocr.run(this, cur(), new Ocr.Callback() {
             @Override
-            public void onProgress(int msg) {
+            public void onDownload(int percent) {
                 if (gen != liveGen) return;
-                Toast.makeText(ViewerActivity.this, msg, Toast.LENGTH_SHORT).show();
+                if (percent < 0) hideDownload();
+                else showDownload(percent);
             }
 
             @Override
             public void onDone(OcrResult r) {
                 if (gen != liveGen || !live) return;
+                hideDownload();
                 busy.setVisibility(View.GONE);
                 if (r.words.isEmpty()) {
                     Toast.makeText(ViewerActivity.this, R.string.ocr_none, Toast.LENGTH_LONG).show();
@@ -313,6 +308,7 @@ public class ViewerActivity extends BaseActivity {
             @Override
             public void onError(int msg) {
                 if (gen != liveGen) return;
+                hideDownload();
                 Toast.makeText(ViewerActivity.this, msg, Toast.LENGTH_LONG).show();
                 exitLive();
             }
@@ -324,7 +320,8 @@ public class ViewerActivity extends BaseActivity {
         liveGen++;
         liveBack.setEnabled(false);
         busy.setVisibility(View.GONE);
-        pill.setVisibility(View.GONE);
+        menu.setVisibility(View.GONE);
+        hideDownload();
         if (layer != null) {
             layer.release();
             layer = null;
@@ -336,46 +333,139 @@ public class ViewerActivity extends BaseActivity {
         liveBtn.setImageTintList(ColorStateList.valueOf(on ? 0xFFFFD60A : 0xFFFFFFFF));
     }
 
+    private void showDownload(int percent) {
+        if (dlDialog == null) {
+            LinearLayout box = Ui.box(this);
+            dlText = new TextView(this);
+            dlText.setTextColor(Ui.color(this, R.color.text_secondary));
+            dlText.setTextSize(14);
+            box.addView(dlText);
+            dlBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            dlBar.setMax(100);
+            Ui.tint(this, dlBar);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 16));
+            lp.topMargin = Ui.dp(this, 10);
+            box.addView(dlBar, lp);
+            dlDialog = new Dlg(this).setTitle(R.string.ocr_download).setView(box).setCancelable(false)
+                    .setNegativeButton(R.string.cancel, (d, w) -> {
+                        dlDialog = null;
+                        exitLive();
+                    }).create();
+            dlDialog.show();
+        }
+        dlBar.setProgress(percent);
+        dlText.setText(percent + "%");
+    }
+
+    private void hideDownload() {
+        if (dlDialog != null) {
+            androidx.appcompat.app.AlertDialog d = dlDialog;
+            dlDialog = null;
+            d.dismiss();
+        }
+    }
+
     private void onSelection(boolean settled) {
         if (layer == null || !layer.hasSelection() || !settled) {
-            pill.setVisibility(View.GONE);
+            menu.setVisibility(View.GONE);
             return;
         }
-        pillRow.removeAllViews();
+        menuItems.clear();
         final String text = layer.selectedText();
         int n = 0;
         for (final OcrEntity e : layer.selectionEntities()) {
             if (n >= 2) break;
             n++;
             if (e.type == OcrEntity.PHONE) {
-                pillItem(R.string.ocr_call, true, () -> LiveActions.call(this, e.value));
-                pillItem(R.string.ocr_message, true, () -> LiveActions.sms(this, e.value));
+                menuItems.add(new Object[]{R.string.ocr_call, (Runnable) () -> LiveActions.call(this, e.value)});
+                menuItems.add(new Object[]{R.string.ocr_message, (Runnable) () -> LiveActions.sms(this, e.value)});
             } else if (e.type == OcrEntity.URL) {
-                pillItem(R.string.ocr_open_link, true, () -> LiveActions.open(this, e.value));
+                menuItems.add(new Object[]{R.string.ocr_open_link, (Runnable) () -> LiveActions.open(this, e.value)});
             } else {
-                pillItem(R.string.ocr_send_mail, true, () -> LiveActions.mail(this, e.value));
+                menuItems.add(new Object[]{R.string.ocr_send_mail, (Runnable) () -> LiveActions.mail(this, e.value)});
             }
         }
-        pillItem(R.string.ocr_copy, false, () -> LiveActions.copy(this, text));
-        pillItem(R.string.ocr_select_all, false, () -> layer.selectAll());
-        pillItem(R.string.ocr_translate, false, () -> TranslateSheet.show(this, text));
-        pillItem(R.string.ocr_search, false, () -> LiveActions.search(this, text));
-        pillItem(R.string.share, false, () -> LiveActions.shareText(this, text));
-        pill.scrollTo(0, 0);
-        pill.setVisibility(View.VISIBLE);
+        menuItems.add(new Object[]{R.string.ocr_copy, (Runnable) () -> {
+            LiveActions.copy(this, text);
+            layer.clearSelection();
+        }});
+        menuItems.add(new Object[]{R.string.ocr_select_all, (Runnable) () -> layer.selectAll()});
+        menuItems.add(new Object[]{R.string.ocr_translate, (Runnable) () -> TranslateSheet.show(this, text)});
+        menuItems.add(new Object[]{R.string.ocr_search, (Runnable) () -> LiveActions.search(this, text)});
+        menuItems.add(new Object[]{R.string.share, (Runnable) () -> LiveActions.shareText(this, text)});
+        menuPage = 0;
+        renderMenu();
     }
 
-    private void pillItem(int label, boolean accent, final Runnable action) {
+    private void renderMenu() {
+        final int per = 4;
+        menu.removeAllViews();
+        int from = menuPage * per;
+        int to = Math.min(menuItems.size(), from + per);
+        boolean rtl = getResources().getConfiguration().getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+        if (menuPage > 0) menuArrow(rtl ? "›" : "‹", -1);
+        for (int i = from; i < to; i++) {
+            if (i > from || menuPage > 0) menuDivider();
+            final Object[] it = menuItems.get(i);
+            TextView t = new TextView(this);
+            t.setText((Integer) it[0]);
+            t.setTextSize(15f);
+            t.setSingleLine(true);
+            t.setTextColor(0xFFFFFFFF);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+            t.setOnClickListener(v -> ((Runnable) it[1]).run());
+            menu.addView(t, new LinearLayout.LayoutParams(-2, -1));
+        }
+        if (to < menuItems.size()) {
+            menuDivider();
+            menuArrow(rtl ? "‹" : "›", 1);
+        }
+        menu.setVisibility(View.INVISIBLE);
+        menu.post(this::placeMenu);
+    }
+
+    private void menuArrow(String glyph, final int dir) {
         TextView t = new TextView(this);
-        t.setText(label);
-        t.setTextSize(14.5f);
-        t.setSingleLine(true);
-        t.setTextColor(accent ? 0xFF4DA3FF : 0xFFFFFFFF);
+        t.setText(glyph);
+        t.setTextSize(22f);
+        t.setTextColor(0xFFFFFFFF);
         t.setGravity(Gravity.CENTER);
-        t.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
-        Ui.press(this, t);
-        t.setOnClickListener(v -> action.run());
-        pillRow.addView(t, new LinearLayout.LayoutParams(-2, -1));
+        t.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), Ui.dp(this, 3));
+        t.setOnClickListener(v -> {
+            menuPage += dir;
+            renderMenu();
+        });
+        menu.addView(t, new LinearLayout.LayoutParams(-2, -1));
+    }
+
+    private void menuDivider() {
+        View d = new View(this);
+        d.setBackgroundColor(0x33FFFFFF);
+        menu.addView(d, new LinearLayout.LayoutParams(Math.max(1, Ui.dp(this, 1) / 2), Ui.dp(this, 22)));
+    }
+
+    private void placeMenu() {
+        android.graphics.RectF b = new android.graphics.RectF();
+        if (layer == null || !layer.selectionBounds(b)) {
+            menu.setVisibility(View.GONE);
+            return;
+        }
+        int mw = menu.getWidth();
+        int mh = menu.getHeight();
+        int rw = rootView.getWidth();
+        int rh = rootView.getHeight();
+        int gap = Ui.dp(this, 22);
+        int side = Ui.dp(this, 8);
+        float x = Math.max(side, Math.min(rw - mw - side, b.centerX() - mw / 2f));
+        float y = b.top - mh - gap;
+        if (y < Ui.dp(this, 90)) y = b.bottom + gap + Ui.dp(this, 12);
+        y = Math.max(Ui.dp(this, 90), Math.min(rh - mh - Ui.dp(this, 100), y));
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menu.getLayoutParams();
+        lp.leftMargin = Math.round(x);
+        lp.topMargin = Math.round(y);
+        menu.setLayoutParams(lp);
+        menu.setVisibility(View.VISIBLE);
     }
 
     private void pickEngine() {

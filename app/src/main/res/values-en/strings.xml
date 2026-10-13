@@ -313,4 +313,20 @@
     <string name="tr_working">Translating…</string>
     <string name="tr_failed">Translation failed, check your connection to download the language pack</string>
     <string name="tr_unsupported">This language is not supported</string>
+    <string name="pick_title">Choose from gallery</string>
+    <string name="pick_selected">%d selected</string>
+    <string name="pick_empty">Nothing to choose from</string>
+    <string name="beta2">Beta 2</string>
+    <string name="beta4">Beta 4</string>
+    <string name="ad_dehaze">Dehaze (AI)</string>
+    <string name="ad_clarity">Clarity (AI)</string>
+    <string name="ad_shadows">Lift shadows (AI)</string>
+    <string name="ad_straight">Auto straighten</string>
+    <string name="ad_straight_ok">The photo is already straight</string>
+    <string name="v_ai">AI tools</string>
+    <string name="v_lowlight">Low light</string>
+    <string name="v_dehaze">Dehaze</string>
+    <string name="v_smart_trim">Smart trim</string>
+    <string name="v_trim_none">No black parts to trim</string>
+    <string name="v_working">Analysing…</string>
 </resources>

@@ -266,7 +266,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
 
     private TextView betaBadge() {
         TextView b = new TextView(this);
-        b.setText(R.string.beta3);
+        b.setText(R.string.beta4);
         b.setTextSize(10.5f);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         b.setTextColor(Ui.color(this, R.color.accent_text));
@@ -503,6 +503,9 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             selectTab(1);
         });
         top.addView(reset);
+        TextView straight = Ui.chip(this, "📐  " + getString(R.string.ad_straight), false);
+        straight.setOnClickListener(v -> autoStraighten());
+        top.addView(straight);
         box.addView(top);
         slider(box, R.string.ad_exposure, st.exposure, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.exposure = v);
         slider(box, R.string.ad_brightness, st.brightness, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.brightness = v);
@@ -513,6 +516,9 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         slider(box, R.string.ad_fade, st.fade, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.fade = v);
         slider(box, R.string.ad_sharpen, st.sharpen, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.sharpen = v);
         slider(box, R.string.ad_denoise, st.denoise, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.denoise = v);
+        slider(box, R.string.ad_dehaze, st.dehaze, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.dehaze = v);
+        slider(box, R.string.ad_clarity, st.clarity, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.clarity = v);
+        slider(box, R.string.ad_shadows, st.shadows, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.shadows = v);
         slider(box, R.string.ad_grain, st.grain, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.grain = v);
         slider(box, R.string.ad_vignette, st.vignette, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.vignette = v);
         sv.addView(box);
@@ -532,8 +538,10 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         spinner.setVisibility(View.VISIBLE);
         worker.execute(() -> {
             final AutoEnhance.Result r;
+            final float[] ai;
             try {
                 r = AutoEnhance.analyze(snapshot);
+                ai = AiTools.suggest(snapshot);
             } catch (Throwable t) {
                 runOnUiThread(() -> spinner.setVisibility(View.GONE));
                 return;
@@ -551,7 +559,36 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                 st.tint = r.tint;
                 st.sharpen = Math.max(st.sharpen, r.sharpen);
                 st.denoise = Math.max(st.denoise, r.denoise);
+                st.dehaze = ai[0];
+                st.clarity = ai[1];
+                st.shadows = ai[2];
                 spinner.setVisibility(View.GONE);
+                selectTab(1);
+            });
+        });
+    }
+
+    /** Finds the dominant horizon / vertical lines and sets the straighten angle so they come out level. */
+    private void autoStraighten() {
+        if (preview == null) return;
+        final Bitmap snapshot = preview;
+        spinner.setVisibility(View.VISIBLE);
+        worker.execute(() -> {
+            float a = 0f;
+            try {
+                a = AiTools.straightenAngle(snapshot);
+            } catch (Throwable ignored) {
+            }
+            final float ang = a;
+            runOnUiThread(() -> {
+                spinner.setVisibility(View.GONE);
+                if (isDestroyed() || preview != snapshot) return;
+                if (Math.abs(ang) < 0.3f) {
+                    Toast.makeText(this, R.string.ad_straight_ok, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                push();
+                st.angle = Math.max(-45f, Math.min(45f, ang));
                 selectTab(1);
             });
         });
