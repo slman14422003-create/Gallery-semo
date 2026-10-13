@@ -31,3 +31,5 @@ description: Progress log and architecture notes for the Gallery Studio Android 
 - Not compiled or run in this environment, build through the GitHub workflow and test on a device.
 
 - CI guard in .github/workflows/build.yml allows exactly MainActivity, OpenActivity and PickerActivity to be exported; any new exported screen must be added there on purpose.
+- Live Text selection restyled in OcrLayer (rounded merged-line highlight with edge, ringed knobs with shadow, pop-in animation selA) and the viewer menu (dark capsule, ripple items, scale/fade-in).
+- Video editor AI actions show a progress dialog (showAi/aiProgress/hideAi, aiGen guards stale threads and cancel). Any new long AI task must use the same dialog, never a bare toast.

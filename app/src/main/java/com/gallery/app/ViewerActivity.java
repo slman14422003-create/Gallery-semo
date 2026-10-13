@@ -159,10 +159,12 @@ public class ViewerActivity extends BaseActivity {
         menu.setGravity(Gravity.CENTER_VERTICAL);
         menu.setVisibility(View.GONE);
         GradientDrawable mg = new GradientDrawable();
-        mg.setCornerRadius(Ui.dp(this, 12));
-        mg.setColor(0xF2262628);
+        mg.setCornerRadius(Ui.dp(this, 16));
+        mg.setColor(0xF51C1C1E);
+        mg.setStroke(Math.max(1, Ui.dp(this, 1) / 2), 0x40FFFFFF);
         menu.setBackground(mg);
-        menu.setElevation(Ui.dp(this, 6));
+        menu.setElevation(Ui.dp(this, 12));
+        menu.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         root.addView(menu, new FrameLayout.LayoutParams(-2, Ui.dp(this, 42), Gravity.TOP | Gravity.LEFT));
 
         busy = new ProgressBar(this);
@@ -409,11 +411,16 @@ public class ViewerActivity extends BaseActivity {
             final Object[] it = menuItems.get(i);
             TextView t = new TextView(this);
             t.setText((Integer) it[0]);
-            t.setTextSize(15f);
+            t.setTextSize(14.5f);
             t.setSingleLine(true);
-            t.setTextColor(0xFFFFFFFF);
+            t.setTextColor(i == from && menuPage == 0 ? 0xFF64B5FF : 0xFFFFFFFF);
+            t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
             t.setGravity(Gravity.CENTER);
             t.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+            GradientDrawable mask = new GradientDrawable();
+            mask.setCornerRadius(Ui.dp(this, 12));
+            mask.setColor(0xFFFFFFFF);
+            t.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), null, mask));
             t.setOnClickListener(v -> ((Runnable) it[1]).run());
             menu.addView(t, new LinearLayout.LayoutParams(-2, -1));
         }
@@ -465,7 +472,14 @@ public class ViewerActivity extends BaseActivity {
         lp.leftMargin = Math.round(x);
         lp.topMargin = Math.round(y);
         menu.setLayoutParams(lp);
+        menu.setPivotX(mw / 2f);
+        menu.setPivotY(mh);
+        menu.setAlpha(0f);
+        menu.setScaleX(0.88f);
+        menu.setScaleY(0.88f);
         menu.setVisibility(View.VISIBLE);
+        menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
     }
 
     private void pickEngine() {

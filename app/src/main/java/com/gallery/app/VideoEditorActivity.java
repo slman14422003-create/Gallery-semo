@@ -76,6 +76,10 @@ public class VideoEditorActivity extends BaseActivity {
     private float brightness = 0f, contrast = 0f, aiWarm = 0f, aiSat = 0f;
     private SeekBar sbBright, sbContrast;
     private boolean aiBusy = false;
+    private volatile int aiGen = 0;
+    private AlertDialog aiDialog;
+    private ProgressBar aiBar;
+    private TextView aiText;
     private int srcW = 0, srcH = 0;
     private long duration = 0;
 
@@ -497,17 +501,64 @@ public class VideoEditorActivity extends BaseActivity {
         return Bitmap.createScaledBitmap(b, Math.max(8, Math.round(b.getWidth() * k)), Math.max(8, Math.round(b.getHeight() * k)), true);
     }
 
+    private void showAi(int titleRes) {
+        aiBusy = true;
+        aiGen++;
+        LinearLayout box = Ui.box(this);
+        aiText = new TextView(this);
+        aiText.setTextColor(Ui.color(this, R.color.text_secondary));
+        aiText.setText(R.string.v_analyzing);
+        box.addView(aiText);
+        aiBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        aiBar.setMax(100);
+        Ui.tint(this, aiBar);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Ui.dp(this, 16));
+        lp.topMargin = Ui.dp(this, 10);
+        box.addView(aiBar, lp);
+        aiDialog = new Dlg(this).setTitle(titleRes).setView(box).setCancelable(false)
+                .setNegativeButton(R.string.cancel, (d, w) -> {
+                    aiGen++;
+                    aiBusy = false;
+                    aiDialog = null;
+                }).create();
+        aiDialog.show();
+    }
+
+    private void aiProgress(final int gen, final int pct) {
+        runOnUiThread(() -> {
+            if (gen != aiGen) return;
+            if (aiBar != null) aiBar.setProgress(pct);
+            if (aiText != null) aiText.setText(getString(R.string.v_analyzing) + "  " + pct + "%");
+        });
+    }
+
+    private void hideAi() {
+        aiBusy = false;
+        if (aiDialog != null) {
+            AlertDialog d = aiDialog;
+            aiDialog = null;
+            try {
+                d.dismiss();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     private void aiEnhance() {
         if (aiBusy) return;
-        aiBusy = true;
-        Toast.makeText(this, R.string.v_working, Toast.LENGTH_SHORT).show();
+        showAi(R.string.ad_auto);
+        final int gen = aiGen;
         new Thread(() -> {
             AutoEnhance.Result res = null;
             MediaMetadataRetriever r = new MediaMetadataRetriever();
             try {
+                aiProgress(gen, 10);
                 r.setDataSource(this, media.uri);
+                aiProgress(gen, 30);
                 Bitmap f = frameAt(r, Math.max(0, duration / 2), 320);
-                if (f != null) res = AutoEnhance.analyze(f);
+                aiProgress(gen, 65);
+                if (f != null && gen == aiGen) res = AutoEnhance.analyze(f);
+                aiProgress(gen, 100);
             } catch (Throwable ignored) {
             } finally {
                 try {
@@ -517,8 +568,13 @@ public class VideoEditorActivity extends BaseActivity {
             }
             final AutoEnhance.Result out = res;
             runOnUiThread(() -> {
-                aiBusy = false;
-                if (isDestroyed() || out == null) return;
+                if (gen != aiGen) return;
+                hideAi();
+                if (isDestroyed()) return;
+                if (out == null) {
+                    Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 preset(Math.max(-0.3f, Math.min(0.3f, out.brightness * 0.4f)),
                         Math.max(-0.3f, Math.min(0.4f, out.contrast * 0.6f)),
                         out.warmth, Math.max(-30f, Math.min(40f, out.saturation * 40f)));
@@ -529,8 +585,8 @@ public class VideoEditorActivity extends BaseActivity {
     /** Samples frames and cuts away black lead-in / lead-out. */
     private void aiSmartTrim() {
         if (aiBusy || duration <= 0) return;
-        aiBusy = true;
-        Toast.makeText(this, R.string.v_working, Toast.LENGTH_SHORT).show();
+        showAi(R.string.v_smart_trim);
+        final int gen = aiGen;
         final long d = duration;
         new Thread(() -> {
             final int n = 24;
@@ -538,7 +594,11 @@ public class VideoEditorActivity extends BaseActivity {
             MediaMetadataRetriever r = new MediaMetadataRetriever();
             try {
                 r.setDataSource(this, media.uri);
-                for (int i = 0; i < n; i++) black[i] = AiTools.isDark(frameAt(r, d * i / (n - 1), 64));
+                for (int i = 0; i < n; i++) {
+                    if (gen != aiGen) break;
+                    black[i] = AiTools.isDark(frameAt(r, d * i / (n - 1), 64));
+                    aiProgress(gen, (i + 1) * 100 / n);
+                }
             } catch (Throwable t) {
                 java.util.Arrays.fill(black, false);
             } finally {
@@ -555,7 +615,8 @@ public class VideoEditorActivity extends BaseActivity {
             final long s = a == 0 ? 0 : d * (a - 1) / (n - 1);
             final long e = z == n - 1 ? d : d * (z + 1) / (n - 1);
             runOnUiThread(() -> {
-                aiBusy = false;
+                if (gen != aiGen) return;
+                hideAi();
                 if (isDestroyed()) return;
                 if (none || e - s < 300) {
                     Toast.makeText(this, R.string.v_trim_none, Toast.LENGTH_SHORT).show();
@@ -687,6 +748,7 @@ public class VideoEditorActivity extends BaseActivity {
         ui.removeCallbacksAndMessages(null);
         if (transformer != null && exporting) transformer.cancel();
         exporting = false;
+        hideAi();
         if (player != null) {
             player.release();
             player = null;

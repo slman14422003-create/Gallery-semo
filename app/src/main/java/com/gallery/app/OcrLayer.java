@@ -28,6 +28,12 @@ final class OcrLayer {
     private final Paint sel = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint under = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint knob = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint selEdge = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final float ringW;
+    private float selA = 1f;
+    private ValueAnimator selAnim;
     private final float slop;
     private final float pad;
     private final float radius;
@@ -52,6 +58,7 @@ final class OcrLayer {
             sel0 = pending;
             sel1 = pending;
             pending = -1;
+            popSelection();
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             if (view.getParent() != null) view.getParent().requestDisallowInterceptTouchEvent(true);
             view.invalidate();
@@ -65,10 +72,11 @@ final class OcrLayer {
         this.listener = listener;
         float d = view.getResources().getDisplayMetrics().density;
         slop = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
-        pad = 2f * d;
-        radius = 4f * d;
-        knobR = 6f * d;
-        grab = 30f * d;
+        pad = 3f * d;
+        radius = 6f * d;
+        knobR = 7f * d;
+        ringW = 1.8f * d;
+        grab = 32f * d;
         rects = new RectF[res.words.size()];
         flashAnim = ValueAnimator.ofFloat(1f, 0f);
         flashAnim.setStartDelay(500);
@@ -80,20 +88,47 @@ final class OcrLayer {
         flashAnim.start();
         for (int i = 0; i < rects.length; i++) rects[i] = new RectF();
         fill.setStyle(Paint.Style.FILL);
-        fill.setColor(0x26FFFFFF);
+        fill.setColor(0x33FFFFFF);
         stroke.setStyle(Paint.Style.STROKE);
-        stroke.setStrokeWidth(1.2f * d);
-        stroke.setColor(0x99FFD60A);
+        stroke.setStrokeWidth(1f * d);
+        stroke.setColor(0x80FFFFFF);
         sel.setStyle(Paint.Style.FILL);
-        sel.setColor(0x590A84FF);
+        sel.setColor(0x5C0A84FF);
+        selEdge.setStyle(Paint.Style.STROKE);
+        selEdge.setStrokeWidth(1f * d);
+        selEdge.setColor(0x990A84FF);
         under.setStyle(Paint.Style.STROKE);
-        under.setStrokeWidth(2.2f * d);
+        under.setStrokeWidth(2f * d);
+        under.setStrokeCap(Paint.Cap.ROUND);
         under.setColor(0xFF0A84FF);
         knob.setStyle(Paint.Style.FILL);
         knob.setColor(0xFF0A84FF);
+        ring.setStyle(Paint.Style.FILL);
+        ring.setColor(0xFFFFFFFF);
+        shadow.setStyle(Paint.Style.FILL);
+        shadow.setColor(0x40000000);
+    }
+
+    private void popSelection() {
+        if (selAnim != null) selAnim.cancel();
+        selAnim = ValueAnimator.ofFloat(0f, 1f);
+        selAnim.setDuration(190);
+        selAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        selAnim.addUpdateListener(a -> {
+            selA = (float) a.getAnimatedValue();
+            view.invalidate();
+        });
+        selAnim.start();
+    }
+
+    private void drawKnob(Canvas c, float x, float y, float r) {
+        c.drawCircle(x, y + knobR * 0.25f, r + ringW + knobR * 0.15f, shadow);
+        c.drawCircle(x, y, r + ringW, ring);
+        c.drawCircle(x, y, r, knob);
     }
 
     void release() {
+        if (selAnim != null) selAnim.cancel();
         if (flashAnim != null) flashAnim.cancel();
         view.removeCallbacks(longPress);
         view.setLayer(null);
@@ -119,6 +154,7 @@ final class OcrLayer {
         if (res.words.isEmpty()) return;
         sel0 = 0;
         sel1 = res.words.size() - 1;
+        popSelection();
         view.invalidate();
         listener.onSelection(true);
     }
@@ -203,20 +239,27 @@ final class OcrLayer {
     void draw(Canvas c) {
         if (!layout()) return;
         if (flash > 0.01f) {
-            fill.setAlpha((int) (46 * flash));
-            stroke.setAlpha((int) (230 * flash));
+            fill.setAlpha((int) (51 * flash));
+            stroke.setAlpha((int) (128 * flash));
             for (RectF r : lines(0, rects.length - 1)) {
                 c.drawRoundRect(r, radius, radius, fill);
                 c.drawRoundRect(r, radius, radius, stroke);
             }
         }
         if (sel0 >= 0) {
-            for (RectF r : lines(sel0, sel1)) c.drawRoundRect(r, radius * 0.6f, radius * 0.6f, sel);
+            sel.setAlpha((int) (0x5C * selA));
+            selEdge.setAlpha((int) (0x99 * selA));
+            for (RectF r : lines(sel0, sel1)) {
+                c.drawRoundRect(r, radius, radius, sel);
+                c.drawRoundRect(r, radius, radius, selEdge);
+            }
             float[] h = handles();
+            under.setAlpha((int) (255 * selA));
             c.drawLine(h[0], h[2], h[0], h[3], under);
             c.drawLine(h[4], h[6], h[4], h[7], under);
-            c.drawCircle(h[0], h[1], knobR, knob);
-            c.drawCircle(h[4], h[5], knobR, knob);
+            float kr = knobR * (0.35f + 0.65f * selA);
+            drawKnob(c, h[0], h[1], kr);
+            drawKnob(c, h[4], h[5], kr);
         }
     }
 
@@ -328,6 +371,7 @@ final class OcrLayer {
                 sel0 = w;
                 sel1 = w;
             }
+            popSelection();
             view.invalidate();
             listener.onSelection(true);
             return true;

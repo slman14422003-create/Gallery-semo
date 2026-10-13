@@ -333,4 +333,5 @@
     <string name="v_smart_trim">قص ذكي</string>
     <string name="v_trim_none">لا توجد أجزاء سوداء للقص</string>
     <string name="v_working">جارٍ التحليل…</string>
+    <string name="v_analyzing">جارٍ تحليل الفيديو…</string>
 </resources>
