@@ -8,10 +8,7 @@ import com.googlecode.tesseract.android.ResultIterator;
 import com.googlecode.tesseract.android.TessBaseAPI;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
 
 final class TessEngine implements OcrEngine {
     private static final String BASE = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/";
@@ -39,22 +36,7 @@ final class TessEngine implements OcrEngine {
             File f = new File(dir, l + ".traineddata");
             if (f.length() >= MIN_BYTES) continue;
             File tmp = new File(dir, l + ".part");
-            HttpURLConnection h = Net.get(BASE + l + ".traineddata", "application/octet-stream");
-            try {
-                if (h.getResponseCode() != 200) throw new IOException("http");
-                try (InputStream in = h.getInputStream(); FileOutputStream out = new FileOutputStream(tmp)) {
-                    byte[] buf = new byte[32768];
-                    long total = 0;
-                    int n;
-                    while ((n = in.read(buf)) > 0) {
-                        out.write(buf, 0, n);
-                        total += n;
-                        if (total > MAX_BYTES) throw new IOException("size");
-                    }
-                }
-            } finally {
-                h.disconnect();
-            }
+            Net.download(BASE + l + ".traineddata", tmp, MAX_BYTES);
             if (tmp.length() < MIN_BYTES || !tmp.renameTo(f)) {
                 tmp.delete();
                 throw new IOException("bad file");

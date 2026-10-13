@@ -43,6 +43,25 @@ final class Net {
         }
     }
 
+    static void download(String url, java.io.File dest, long max) throws IOException {
+        HttpURLConnection h = get(url, "application/octet-stream");
+        try {
+            if (h.getResponseCode() != 200) throw new IOException("http");
+            try (java.io.InputStream in = h.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(dest)) {
+                byte[] buf = new byte[32768];
+                long total = 0;
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                    total += n;
+                    if (total > max) throw new IOException("size");
+                }
+            }
+        } finally {
+            h.disconnect();
+        }
+    }
+
     static String post(String url, String json, String keyHeader, String key) throws IOException {
         URL u = new URL(url);
         if (!allowed(u)) throw new IOException("blocked host");
