@@ -40,3 +40,8 @@
 -dontwarn org.checkerframework.**
 -dontwarn org.jetbrains.annotations.**
 -dontwarn com.google.errorprone.annotations.**
+
+# Tesseract (JNI)
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
+-dontwarn com.google.mlkit.**

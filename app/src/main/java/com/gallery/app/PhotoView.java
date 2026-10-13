@@ -2,6 +2,7 @@ package com.gallery.app;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
@@ -25,6 +26,8 @@ public class PhotoView extends AppCompatImageView {
     private float baseScale = 1f;
     private ValueAnimator zoomAnim;
     private TapListener tap;
+    private OcrLayer layer;
+    private boolean layerActive;
     private final ScaleGestureDetector scaleDetector;
     private final GestureDetector gestureDetector;
 
@@ -60,6 +63,7 @@ public class PhotoView extends AppCompatImageView {
 
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (layer != null && layer.onBackgroundTap()) return true;
                 if (tap != null) tap.onTap();
                 return true;
             }
@@ -92,6 +96,22 @@ public class PhotoView extends AppCompatImageView {
 
     public void setTapListener(TapListener l) {
         tap = l;
+    }
+
+    public void setLayer(OcrLayer l) {
+        layer = l;
+        layerActive = false;
+        invalidate();
+    }
+
+    Matrix currentMatrix() {
+        return matrix;
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        if (layer != null) layer.draw(canvas);
     }
 
     @Override
@@ -172,6 +192,21 @@ public class PhotoView extends AppCompatImageView {
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
         int act = ev.getActionMasked();
+        if (layer != null) {
+            if (act == MotionEvent.ACTION_DOWN) layerActive = false;
+            if (layer.onTouch(ev)) {
+                if (!layerActive) {
+                    layerActive = true;
+                    MotionEvent cancel = MotionEvent.obtain(ev);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    scaleDetector.onTouchEvent(cancel);
+                    gestureDetector.onTouchEvent(cancel);
+                    cancel.recycle();
+                }
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+                return true;
+            }
+        }
         if (act == MotionEvent.ACTION_DOWN) {
             if (zoomAnim != null) zoomAnim.cancel();
             if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(isZoomed());

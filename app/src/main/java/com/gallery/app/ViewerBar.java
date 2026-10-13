@@ -24,6 +24,7 @@ final class ViewerBar {
         g.setColor(0xCC1C1C1E);
         bar.setBackground(g);
         bar.setPadding(Ui.dp(a, 8), Ui.dp(a, 6), Ui.dp(a, 8), Ui.dp(a, 6));
+        int bw = icons.length > 5 ? 44 : 50;
         for (int i = 0; i < icons.length; i++) {
             ImageButton b = new ImageButton(a);
             b.setImageResource(icons[i]);
@@ -33,7 +34,7 @@ final class ViewerBar {
             b.setContentDescription(a.getString(descs[i]));
             Ui.press(a, b);
             b.setOnClickListener(clicks[i]);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(a, 50), Ui.dp(a, 46));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(a, bw), Ui.dp(a, 46));
             lp.setMargins(Ui.dp(a, 3), 0, Ui.dp(a, 3), 0);
             bar.addView(b, lp);
             if (out != null) out[i] = b;

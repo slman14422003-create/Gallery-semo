@@ -6,9 +6,9 @@ import java.net.URL;
 import java.util.Locale;
 
 /**
- * The ONLY place in the app that opens a network connection (used by the update check).
+ * The ONLY place in the app that opens a network connection (update check, OCR language data, optional cloud OCR).
  * Everything is HTTPS, limited to GitHub's own hosts, redirects are followed by hand and every hop
- * is checked again. Nothing from the device's files is ever sent: all requests are plain GETs.
+ * is checked again. Device files leave the phone only through the optional cloud OCR engine, after the user enabled it.
  */
 final class Net {
     private Net() {
@@ -19,7 +19,9 @@ final class Net {
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
-            "github-releases.githubusercontent.com"
+            "github-releases.githubusercontent.com",
+            "raw.githubusercontent.com",
+            "vision.googleapis.com"
     };
     private static final int MAX_REDIRECTS = 5;
 
@@ -38,6 +40,44 @@ final class Net {
             return allowed(new URL(url));
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    static String post(String url, String json, String keyHeader, String key) throws IOException {
+        URL u = new URL(url);
+        if (!allowed(u)) throw new IOException("blocked host");
+        HttpURLConnection c = (HttpURLConnection) u.openConnection();
+        try {
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(60000);
+            c.setInstanceFollowRedirects(false);
+            c.setUseCaches(false);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            c.setRequestProperty(keyHeader, key);
+            byte[] data = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            c.setFixedLengthStreamingMode(data.length);
+            try (java.io.OutputStream o = c.getOutputStream()) {
+                o.write(data);
+            }
+            int code = c.getResponseCode();
+            java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            if (in != null) {
+                try (java.io.InputStream i = in) {
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = i.read(buf)) > 0) {
+                        bo.write(buf, 0, n);
+                        if (bo.size() > (16 << 20)) throw new IOException("too large");
+                    }
+                }
+            }
+            if (code >= 400) throw new IOException("HTTP " + code);
+            return bo.toString("UTF-8");
+        } finally {
+            c.disconnect();
         }
     }
 

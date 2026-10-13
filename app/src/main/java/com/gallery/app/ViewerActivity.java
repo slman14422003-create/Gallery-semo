@@ -5,16 +5,21 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ProgressBar;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -39,9 +44,16 @@ public class ViewerActivity extends BaseActivity {
     private Adapter adapter;
     private LinearLayout topBar, bottomBar;
     private TextView titleTv, subTv;
-    private ImageButton favBtn;
+    private ImageButton favBtn, liveBtn;
     private boolean chrome = true;
     private int current;
+    private boolean live;
+    private int liveGen;
+    private OcrLayer layer;
+    private ProgressBar busy;
+    private HorizontalScrollView pill;
+    private LinearLayout pillRow;
+    private OnBackPressedCallback liveBack;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -116,20 +128,59 @@ public class ViewerActivity extends BaseActivity {
         root.addView(topBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         // bottom action pill
-        final ImageButton[] btns = new ImageButton[5];
+        final ImageButton[] btns = new ImageButton[6];
         bottomBar = ViewerBar.build(this,
-                new int[]{R.drawable.ic_share, R.drawable.ic_heart, R.drawable.ic_edit, R.drawable.ic_info, R.drawable.ic_delete},
-                new int[]{R.string.share, R.string.favorite, R.string.edit, R.string.info, R.string.delete},
+                new int[]{R.drawable.ic_share, R.drawable.ic_heart, R.drawable.ic_live_text, R.drawable.ic_edit, R.drawable.ic_info, R.drawable.ic_delete},
+                new int[]{R.string.share, R.string.favorite, R.string.live_text, R.string.edit, R.string.info, R.string.delete},
                 new View.OnClickListener[]{
                         v -> Actions.share(this, java.util.Collections.singletonList(cur())),
                         v -> toggleFav(),
+                        v -> toggleLive(),
                         v -> Actions.edit(this, cur()),
                         v -> InfoSheet.show(this, cur()),
                         v -> deleteCurrent()}, btns);
         favBtn = btns[1];
+        liveBtn = btns[2];
+        liveBtn.setOnLongClickListener(v -> {
+            pickEngine();
+            return true;
+        });
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         blp.bottomMargin = Ui.dp(this, 16);
         root.addView(bottomBar, blp);
+
+        pill = new HorizontalScrollView(this);
+        pill.setHorizontalScrollBarEnabled(false);
+        pill.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        pill.setVisibility(View.GONE);
+        GradientDrawable pg = new GradientDrawable();
+        pg.setCornerRadius(Ui.dp(this, 22));
+        pg.setColor(0xF02C2C2E);
+        pill.setBackground(pg);
+        pill.setClipToOutline(true);
+        pillRow = new LinearLayout(this);
+        pillRow.setOrientation(LinearLayout.HORIZONTAL);
+        pillRow.setGravity(Gravity.CENTER_VERTICAL);
+        pillRow.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
+        pill.addView(pillRow, new FrameLayout.LayoutParams(-2, Ui.dp(this, 44)));
+        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        plp.setMarginStart(Ui.dp(this, 12));
+        plp.setMarginEnd(Ui.dp(this, 12));
+        plp.bottomMargin = Ui.dp(this, 92);
+        root.addView(pill, plp);
+
+        busy = new ProgressBar(this);
+        busy.setIndeterminateTintList(ColorStateList.valueOf(0xFFFFFFFF));
+        busy.setVisibility(View.GONE);
+        root.addView(busy, new FrameLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44), Gravity.CENTER));
+
+        liveBack = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                exitLive();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, liveBack);
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets b = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
@@ -137,12 +188,16 @@ public class ViewerActivity extends BaseActivity {
             FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bottomBar.getLayoutParams();
             p.bottomMargin = Ui.dp(this, 16) + b.bottom;
             bottomBar.setLayoutParams(p);
+            FrameLayout.LayoutParams q = (FrameLayout.LayoutParams) pill.getLayoutParams();
+            q.bottomMargin = Ui.dp(this, 92) + b.bottom;
+            pill.setLayoutParams(q);
             return insets;
         });
 
         pager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
+                if (live && position != current) exitLive();
                 current = position;
                 updateChrome();
             }
@@ -200,6 +255,7 @@ public class ViewerActivity extends BaseActivity {
         StringBuilder sb = new StringBuilder(Fmt.dateLong(m.date()));
         subTv.setText(sb);
         boolean fav = Library.isFav(this, m);
+        liveBtn.setVisibility(m.video ? View.GONE : View.VISIBLE);
         favBtn.setImageResource(fav ? R.drawable.ic_heart_fill : R.drawable.ic_heart);
         favBtn.setImageTintList(ColorStateList.valueOf(fav ? 0xFFFF5C77 : 0xFFFFFFFF));
     }
@@ -210,7 +266,158 @@ public class ViewerActivity extends BaseActivity {
         Toast.makeText(this, now ? R.string.fav_added : R.string.fav_removed, Toast.LENGTH_SHORT).show();
     }
 
+    private PhotoView currentPhoto() {
+        View rv = pager.getChildAt(0);
+        if (!(rv instanceof RecyclerView)) return null;
+        RecyclerView.ViewHolder vh = ((RecyclerView) rv).findViewHolderForAdapterPosition(current);
+        return vh instanceof Adapter.VH ? ((Adapter.VH) vh).photo : null;
+    }
+
+    private void toggleLive() {
+        if (cur().video) return;
+        if (live) {
+            exitLive();
+            return;
+        }
+        if (Ocr.needsKey(this)) {
+            askKey(this::toggleLive);
+            return;
+        }
+        final PhotoView p = currentPhoto();
+        if (p == null) return;
+        live = true;
+        liveBack.setEnabled(true);
+        final int gen = ++liveGen;
+        setLiveButton(true);
+        busy.setVisibility(View.VISIBLE);
+        Ocr.run(this, cur(), new Ocr.Callback() {
+            @Override
+            public void onProgress(int msg) {
+                if (gen != liveGen) return;
+                Toast.makeText(ViewerActivity.this, msg, Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onDone(OcrResult r) {
+                if (gen != liveGen || !live) return;
+                busy.setVisibility(View.GONE);
+                if (r.words.isEmpty()) {
+                    Toast.makeText(ViewerActivity.this, R.string.ocr_none, Toast.LENGTH_LONG).show();
+                    exitLive();
+                    return;
+                }
+                layer = new OcrLayer(p, r, settled -> onSelection(settled));
+                p.setLayer(layer);
+            }
+
+            @Override
+            public void onError(int msg) {
+                if (gen != liveGen) return;
+                Toast.makeText(ViewerActivity.this, msg, Toast.LENGTH_LONG).show();
+                exitLive();
+            }
+        });
+    }
+
+    private void exitLive() {
+        live = false;
+        liveGen++;
+        liveBack.setEnabled(false);
+        busy.setVisibility(View.GONE);
+        pill.setVisibility(View.GONE);
+        if (layer != null) {
+            layer.release();
+            layer = null;
+        }
+        setLiveButton(false);
+    }
+
+    private void setLiveButton(boolean on) {
+        liveBtn.setImageTintList(ColorStateList.valueOf(on ? 0xFFFFD60A : 0xFFFFFFFF));
+    }
+
+    private void onSelection(boolean settled) {
+        if (layer == null || !layer.hasSelection() || !settled) {
+            pill.setVisibility(View.GONE);
+            return;
+        }
+        pillRow.removeAllViews();
+        final String text = layer.selectedText();
+        int n = 0;
+        for (final OcrEntity e : layer.selectionEntities()) {
+            if (n >= 2) break;
+            n++;
+            if (e.type == OcrEntity.PHONE) {
+                pillItem(R.string.ocr_call, true, () -> LiveActions.call(this, e.value));
+                pillItem(R.string.ocr_message, true, () -> LiveActions.sms(this, e.value));
+            } else if (e.type == OcrEntity.URL) {
+                pillItem(R.string.ocr_open_link, true, () -> LiveActions.open(this, e.value));
+            } else {
+                pillItem(R.string.ocr_send_mail, true, () -> LiveActions.mail(this, e.value));
+            }
+        }
+        pillItem(R.string.ocr_copy, false, () -> LiveActions.copy(this, text));
+        pillItem(R.string.ocr_select_all, false, () -> layer.selectAll());
+        pillItem(R.string.ocr_translate, false, () -> TranslateSheet.show(this, text));
+        pillItem(R.string.ocr_search, false, () -> LiveActions.search(this, text));
+        pillItem(R.string.share, false, () -> LiveActions.shareText(this, text));
+        pill.scrollTo(0, 0);
+        pill.setVisibility(View.VISIBLE);
+    }
+
+    private void pillItem(int label, boolean accent, final Runnable action) {
+        TextView t = new TextView(this);
+        t.setText(label);
+        t.setTextSize(14.5f);
+        t.setSingleLine(true);
+        t.setTextColor(accent ? 0xFF4DA3FF : 0xFFFFFFFF);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
+        Ui.press(this, t);
+        t.setOnClickListener(v -> action.run());
+        pillRow.addView(t, new LinearLayout.LayoutParams(-2, -1));
+    }
+
+    private void pickEngine() {
+        final String[] ids = {Ocr.AUTO, Ocr.MLKIT, Ocr.TESS, Ocr.VISION};
+        final int[] names = {R.string.ocr_engine_auto, R.string.ocr_engine_mlkit, R.string.ocr_engine_tess, R.string.ocr_engine_vision};
+        String curMode = Ocr.mode(this);
+        CharSequence[] items = new CharSequence[ids.length];
+        for (int i = 0; i < ids.length; i++) {
+            items[i] = (ids[i].equals(curMode) ? "✓ " : "○ ") + getString(names[i]);
+        }
+        new Dlg(this).setTitle(R.string.ocr_engine).setItems(items, (d, w) -> {
+            Ocr.setMode(this, ids[w]);
+            if (live) exitLive();
+            if (Ocr.VISION.equals(ids[w]) && VisionEngine.key(this).isEmpty()) askKey(null);
+        }).show();
+    }
+
+    private void askKey(final Runnable after) {
+        final EditText et = new EditText(this);
+        et.setSingleLine(true);
+        et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        et.setHint(R.string.ocr_vision_hint);
+        et.setText(VisionEngine.key(this));
+        et.setTextColor(Ui.color(this, R.color.text_primary));
+        et.setHintTextColor(Ui.color(this, R.color.text_hint));
+        et.setBackgroundResource(R.drawable.bg_input);
+        et.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10));
+        LinearLayout box = Ui.box(this);
+        box.addView(Ui.label(this, getString(R.string.ocr_vision_msg)));
+        box.addView(et, new LinearLayout.LayoutParams(-1, Ui.dp(this, 50)));
+        new Dlg(this).setTitle(R.string.ocr_vision_title).setView(box)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    String k = et.getText().toString().trim();
+                    Store.setStr(this, "vision_key", k);
+                    if (!k.isEmpty() && after != null) after.run();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
     private void deleteCurrent() {
+        if (live) exitLive();
         final Media m = cur();
         trashOrDelete(java.util.Collections.singletonList(m), () -> {
             int idx = list.indexOf(m);
@@ -324,6 +531,7 @@ public class ViewerActivity extends BaseActivity {
 
         @Override
         public void onViewRecycled(VH h) {
+            h.photo.setLayer(null);
             h.photo.reset();
             Glide.with(h.itemView).clear(h.photo);
             Glide.with(h.itemView).clear(h.poster);
