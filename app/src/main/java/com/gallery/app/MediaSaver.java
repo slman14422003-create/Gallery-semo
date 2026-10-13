@@ -74,11 +74,31 @@ final class MediaSaver {
         return new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
     }
 
+    static final int JPEG = 0, WEBP = 1, PNG = 2;
+
     /** Saves a picture as a new file in Pictures/Edited. Returns its Uri. */
     static Uri savePicture(Context c, Bitmap bmp, boolean png) throws Exception {
-        String name = "IMG_EDIT_" + stamp() + (png ? ".png" : ".jpg");
-        String mime = png ? "image/png" : "image/jpeg";
-        Bitmap.CompressFormat fmt = png ? Bitmap.CompressFormat.PNG : Bitmap.CompressFormat.JPEG;
+        return savePicture(c, bmp, png ? PNG : JPEG, 95).uri;
+    }
+
+    static final class Saved {
+        Uri uri;
+        long bytes;
+    }
+
+    /** Compresses to the chosen format and quality (ignored for PNG) and saves a new file in Pictures/Edited. */
+    static Saved savePicture(Context c, Bitmap bmp, int format, int quality) throws Exception {
+        String ext = format == PNG ? ".png" : format == WEBP ? ".webp" : ".jpg";
+        String mime = format == PNG ? "image/png" : format == WEBP ? "image/webp" : "image/jpeg";
+        Bitmap.CompressFormat fmt = format == PNG ? Bitmap.CompressFormat.PNG
+                : format == WEBP ? (Build.VERSION.SDK_INT >= 30 ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP)
+                : Bitmap.CompressFormat.JPEG;
+        String name = "IMG_EDIT_" + stamp() + ext;
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream(1 << 20);
+        bmp.compress(fmt, Math.max(30, Math.min(100, quality)), buf);
+        byte[] data = buf.toByteArray();
+        Saved r = new Saved();
+        r.bytes = data.length;
         ContentResolver cr = c.getContentResolver();
         if (Build.VERSION.SDK_INT >= 29) {
             ContentValues v = new ContentValues();
@@ -89,21 +109,23 @@ final class MediaSaver {
             Uri u = cr.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
             if (u == null) throw new java.io.IOException("insert");
             try (OutputStream out = cr.openOutputStream(u)) {
-                bmp.compress(fmt, 95, out);
+                out.write(data);
             }
             v.clear();
             v.put(MediaStore.MediaColumns.IS_PENDING, 0);
             cr.update(u, v, null, null);
-            return u;
+            r.uri = u;
+            return r;
         }
         File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Edited");
         dir.mkdirs();
         File f = new File(dir, name);
         try (FileOutputStream out = new FileOutputStream(f)) {
-            bmp.compress(fmt, 95, out);
+            out.write(data);
         }
         MediaScannerConnection.scanFile(c, new String[]{f.getAbsolutePath()}, new String[]{mime}, null);
-        return Uri.fromFile(f);
+        r.uri = Uri.fromFile(f);
+        return r;
     }
 
     /** Where an edited video is exported to first (the exporter needs a real file). */

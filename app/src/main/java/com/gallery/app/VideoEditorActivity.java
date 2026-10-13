@@ -38,6 +38,7 @@ import androidx.media3.common.util.UnstableApi;
 import androidx.media3.effect.Brightness;
 import androidx.media3.effect.Contrast;
 import androidx.media3.effect.Crop;
+import androidx.media3.effect.FrameDropEffect;
 import androidx.media3.effect.HslAdjustment;
 import androidx.media3.effect.Presentation;
 import androidx.media3.effect.RgbAdjustment;
@@ -58,7 +59,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Video editor (beta 3): trim, speed, volume, rotate, flip, crop or fit to a ratio, looks, adjustments, text and emoji. Live preview; exports a new MP4, the original is kept. */
+/** Video editor (beta 4): trim, speed, volume, rotate, flip, crop or fit to a ratio, looks, adjustments, fade, text and emoji, and compressed export (size presets, H.265). Live preview; exports a new MP4, the original is kept. */
 @OptIn(markerClass = UnstableApi.class)
 public class VideoEditorActivity extends BaseActivity {
     private static final float[] RATIOS = {0f, 1f, 16f / 9f, 9f / 16f, 4f / 3f};
@@ -68,6 +69,7 @@ public class VideoEditorActivity extends BaseActivity {
     private static final float[] SPEEDS = {0.25f, 0.5f, 0.75f, 1f, 1.5f, 2f, 3f, 4f};
     private static final int[] TEXT_COLORS = {0xFFFFFFFF, 0xFF000000, 0xFFFF3B30, 0xFFFF9500, 0xFFFFCC00, 0xFF34C759, 0xFF0A84FF, 0xFFBF5AF2};
     private static final int TAB_TEXT = 5;
+    private static final long[] FADES = {0L, 500L, 1000L, 2000L};
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private Media media;
@@ -106,6 +108,11 @@ public class VideoEditorActivity extends BaseActivity {
     private ProgressBar aiBar;
     private TextView aiText;
     private int srcW = 0, srcH = 0;
+    private int quality = VideoCompress.DEFAULT;
+    private boolean h265 = false;
+    private long fadeInMs = 0, fadeOutMs = 0;
+    private volatile int srcBitrate = 0;
+    private TextView estTv;
     private long duration = 0;
 
     private final Runnable tick = new Runnable() {
@@ -155,7 +162,7 @@ public class VideoEditorActivity extends BaseActivity {
         tl.setGravity(Gravity.CENTER_VERTICAL);
         tl.addView(title);
         TextView beta = new TextView(this);
-        beta.setText(R.string.beta3);
+        beta.setText(R.string.beta4);
         beta.setTextSize(10.5f);
         beta.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         beta.setTextColor(Ui.color(this, R.color.accent_text));
@@ -244,6 +251,7 @@ public class VideoEditorActivity extends BaseActivity {
         trim.setDuration(Math.max(1, duration));
         trim.setListener((s, e, which, done) -> {
             updateRange();
+            if (done && (fadeInMs > 0 || fadeOutMs > 0)) scheduleApply();
             if (which == 0) player.seekTo(s);
             else if (which == 1) player.seekTo(Math.max(s, e - 400));
             else if (which == 2) player.seekTo(trim.head());
@@ -274,7 +282,7 @@ public class VideoEditorActivity extends BaseActivity {
         LinearLayout tabRow = new LinearLayout(this);
         tabRow.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 4));
         int[] names = {R.string.v_tab_edit, R.string.v_tab_speed, R.string.v_tab_filters, R.string.v_tab_adjust,
-                R.string.v_tab_audio, R.string.v_tab_text, R.string.v_ai};
+                R.string.v_tab_audio, R.string.v_tab_text, R.string.v_ai, R.string.v_tab_compress};
         FrameLayout holder = new FrameLayout(this);
         for (int i = 0; i < names.length; i++) {
             final int k = i;
@@ -303,6 +311,7 @@ public class VideoEditorActivity extends BaseActivity {
         buildAudioPage(pages.get(4));
         buildTextPage(pages.get(5));
         buildAiPage(pages.get(6));
+        buildCompressPage(pages.get(7));
     }
 
     private void showTab(int k) {
@@ -344,7 +353,54 @@ public class VideoEditorActivity extends BaseActivity {
             fit = i == 1;
             applyEffects();
         }));
+        t.addView(Ui.label(this, getString(R.string.v_fade_in)));
+        t.addView(chipRow(fadeNames(), 0, i -> {
+            fadeInMs = FADES[i];
+            applyEffects();
+        }));
+        t.addView(Ui.label(this, getString(R.string.v_fade_out)));
+        t.addView(chipRow(fadeNames(), 0, i -> {
+            fadeOutMs = FADES[i];
+            applyEffects();
+        }));
         t.addView(Ui.noteCard(this, getString(R.string.video_beta_note), R.color.text_secondary));
+    }
+
+    private String[] fadeNames() {
+        String[] n = new String[FADES.length];
+        n[0] = getString(R.string.v_off);
+        for (int i = 1; i < FADES.length; i++) n[i] = getString(R.string.v_sec, FADES[i] / 1000f == (int) (FADES[i] / 1000) ? String.valueOf(FADES[i] / 1000) : String.valueOf(FADES[i] / 1000f));
+        return n;
+    }
+
+    private void buildCompressPage(LinearLayout t) {
+        t.addView(Ui.label(this, getString(R.string.v_quality)));
+        t.addView(chipRow(new int[]{R.string.vq_orig, R.string.vq_high, R.string.vq_bal, R.string.vq_small, R.string.vq_tiny}, quality, i -> {
+            quality = i;
+            dirty = true;
+            updateEstimate();
+        }));
+        if (VideoCompress.hevcSupported()) {
+            t.addView(Ui.label(this, getString(R.string.v_codec)));
+            t.addView(chipRow(new String[]{"H.264", getString(R.string.v_h265)}, 0, i -> {
+                h265 = i == 1;
+                dirty = true;
+                updateEstimate();
+            }));
+        }
+        estTv = Ui.noteCard(this, "", R.color.text_secondary);
+        t.addView(estTv);
+        updateEstimate();
+    }
+
+    private void updateEstimate() {
+        if (estTv == null || trim == null || media == null) return;
+        int[] o = outSize();
+        int[] z = VideoCompress.size(o[0], o[1], quality);
+        double sec = Math.max(0.1, (trim.end() - trim.start()) / 1000.0 / speed);
+        long bytes = VideoCompress.estimate(o[0], o[1], quality, h265, srcBitrate, hasAudio && !mute, sec);
+        if (media.size > 0 && bytes > media.size) bytes = media.size;
+        estTv.setText(getString(R.string.v_est, z[0] + "\u00D7" + z[1], Fmt.size(bytes), Fmt.size(media.size)));
     }
 
     private void buildSpeedPage(LinearLayout t) {
@@ -411,6 +467,7 @@ public class VideoEditorActivity extends BaseActivity {
             Ui.setChip(this, muteChip, mute);
             player.setVolume(mute ? 0f : volume);
             dirty = true;
+            updateEstimate();
         });
         t.addView(muteChip);
     }
@@ -754,6 +811,7 @@ public class VideoEditorActivity extends BaseActivity {
         long s = trim.start(), e = trim.end();
         long out = Math.round((e - s) / speed);
         rangeTv.setText(String.format(Locale.US, "%s – %s   (%s)", Fmt.dur(s), Fmt.dur(e), Fmt.dur(out)));
+        updateEstimate();
     }
 
     private void loadThumbs() {
@@ -763,6 +821,10 @@ public class VideoEditorActivity extends BaseActivity {
             try {
                 r.setDataSource(this, media.uri);
                 hasAudio = "yes".equals(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO));
+                try {
+                    srcBitrate = Integer.parseInt(r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+                } catch (Exception ignored) {
+                }
                 long d = media.duration > 0 ? media.duration : 1000;
                 int n = 9;
                 for (int i = 0; i < n; i++) {
@@ -782,7 +844,7 @@ public class VideoEditorActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ effects
 
-    private List<Effect> effects() {
+    private List<Effect> effects(boolean export) {
         List<Effect> v = new ArrayList<>();
         if (rot != 0 || flipH || flipV) {
             v.add(new ScaleAndRotateTransformation.Builder()
@@ -836,16 +898,31 @@ public class VideoEditorActivity extends BaseActivity {
             int[] sz = outSize();
             v.add(VideoFx.overlays(overlays, sz[0], sz[1]));
         }
+        if (fadeInMs > 0 || fadeOutMs > 0) {
+            long clip = Math.max(1L, trim.end() - trim.start());
+            long total = export ? Math.round(clip / speed) : clip;
+            long half = total / 2;
+            v.add(new VideoFx.Fade(Math.min(fadeInMs, half) * 1000L, Math.min(fadeOutMs, half) * 1000L, total * 1000L, export ? 0L : trim.start() * 1000L));
+        }
+        if (export) {
+            int[] o = outSize();
+            if (VideoCompress.scales(o[0], o[1], quality)) {
+                int[] z = VideoCompress.size(o[0], o[1], quality);
+                v.add(Presentation.createForHeight(z[1]));
+            }
+            if (VideoCompress.capFps(quality)) v.add(FrameDropEffect.createDefaultFrameDropEffect(30f));
+        }
         return v;
     }
 
     private void applyEffects() {
         dirty = true;
+        updateEstimate();
         boolean odd = rot % 2 == 1;
         float base = srcW > 0 && srcH > 0 ? (odd ? (float) srcH / srcW : (float) srcW / srcH) : 0f;
         frame.setVideoRatio(ratioIdx != 0 ? RATIOS[ratioIdx] : base);
         try {
-            player.setVideoEffects(effects());
+            player.setVideoEffects(effects(false));
             if (!player.isPlaying()) player.seekTo(player.getCurrentPosition());
         } catch (Throwable t) {
             Toast.makeText(this, getString(R.string.error) + ": " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
@@ -1024,7 +1101,7 @@ public class VideoEditorActivity extends BaseActivity {
                         .setStartPositionMs(s).setEndPositionMs(e).build())
                 .build();
         List<AudioProcessor> audio = new ArrayList<>();
-        List<Effect> vfx = effects();
+        List<Effect> vfx = effects(true);
         boolean silent = mute || !hasAudio;
         if (Math.abs(speed - 1f) > 0.01f) {
             if (silent) {
@@ -1041,12 +1118,20 @@ public class VideoEditorActivity extends BaseActivity {
             mixer.putChannelMixingMatrix(new ChannelMixingMatrix(2, 2, new float[]{volume, 0f, 0f, volume}));
             audio.add(mixer);
         }
+        if (!silent && (fadeInMs > 0 || fadeOutMs > 0)) {
+            long total = Math.round((e - s) / speed);
+            long half = total / 2;
+            audio.add(new VideoFx.AudioFade(Math.min(fadeInMs, half) * 1000L, Math.min(fadeOutMs, half) * 1000L, total * 1000L));
+        }
+        int[] os = outSize();
+        int vBps = VideoCompress.videoBitrate(os[0], os[1], quality, h265, srcBitrate);
         EditedMediaItem em = new EditedMediaItem.Builder(item)
                 .setRemoveAudio(mute)
                 .setEffects(new Effects(audio, vfx))
                 .build();
         transformer = new Transformer.Builder(this)
-                .setVideoMimeType(MimeTypes.VIDEO_H264)
+                .setVideoMimeType(h265 ? MimeTypes.VIDEO_H265 : MimeTypes.VIDEO_H264)
+                .setEncoderFactory(VideoCompress.encoders(this, vBps, VideoCompress.audioBitrate(quality)))
                 .addListener(new Transformer.Listener() {
                     @Override
                     public void onCompleted(Composition composition, ExportResult result) {

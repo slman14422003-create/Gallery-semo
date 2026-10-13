@@ -938,16 +938,93 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
 
     // ------------------------------------------------------------------ save
 
+    private static int saveFmt = -1, saveQ = 85, saveSide = 0;
+    private static final int[] SIDES = {0, 2560, 1920, 1280, 1024};
+
     private void save() {
         if (saving || preview == null) return;
         if (!st.changed()) {
             Toast.makeText(this, R.string.nothing_changed, Toast.LENGTH_SHORT).show();
             return;
         }
+        if (saveFmt < 0) saveFmt = "image/png".equals(media.mime) ? MediaSaver.PNG : MediaSaver.JPEG;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), Ui.dp(this, 4));
+        box.addView(Ui.label(this, getString(R.string.sv_format)));
+        final LinearLayout qRow = row();
+        box.addView(optionRow(new String[]{"JPEG", "WebP", "PNG"}, saveFmt, i -> {
+            saveFmt = i;
+            qRow.setVisibility(i == MediaSaver.PNG ? View.GONE : View.VISIBLE);
+        }));
+        box.addView(Ui.label(this, getString(R.string.sv_size)));
+        String[] sn = new String[SIDES.length];
+        int sel = 0;
+        for (int i = 0; i < SIDES.length; i++) {
+            sn[i] = SIDES[i] == 0 ? getString(R.string.cr_original) : String.valueOf(SIDES[i]);
+            if (SIDES[i] == saveSide) sel = i;
+        }
+        box.addView(optionRow(sn, sel, i -> saveSide = SIDES[i]));
+        final TextView qv = new TextView(this);
+        qv.setTextColor(Ui.color(this, R.color.text_secondary));
+        qv.setTextSize(13.5f);
+        qv.setText(getString(R.string.sv_quality) + "  " + saveQ + "%");
+        SeekBar sb = new SeekBar(this);
+        sb.setMax(60);
+        sb.setProgress(saveQ - 40);
+        sb.setProgressTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
+        sb.setThumbTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar s, int p, boolean user) {
+                saveQ = 40 + p;
+                qv.setText(getString(R.string.sv_quality) + "  " + saveQ + "%");
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar s) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar s) {
+            }
+        });
+        qRow.setOrientation(LinearLayout.VERTICAL);
+        qRow.addView(qv);
+        qRow.addView(sb);
+        qRow.setVisibility(saveFmt == MediaSaver.PNG ? View.GONE : View.VISIBLE);
+        box.addView(qRow);
+        new Dlg(this).setTitle(R.string.sv_title).setView(box)
+                .setPositiveButton(R.string.save, (d, w) -> doSave())
+                .setNegativeButton(R.string.cancel, null).show();
+    }
+
+    private HorizontalScrollView optionRow(String[] names, int sel, final java.util.function.IntConsumer cb) {
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout r = new LinearLayout(this);
+        final List<TextView> cs = new ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            final int k = i;
+            TextView c = Ui.chip(this, names[i], i == sel);
+            c.setOnClickListener(v -> {
+                for (int j = 0; j < cs.size(); j++) Ui.setChip(this, cs.get(j), j == k);
+                cb.accept(k);
+            });
+            cs.add(c);
+            r.addView(c);
+        }
+        hs.addView(r);
+        return hs;
+    }
+
+    private void doSave() {
+        if (saving || preview == null) return;
         saving = true;
         saveBtn.setAlpha(0.5f);
         spinner.setVisibility(View.VISIBLE);
         final EditState snap = st.copy();
+        final int fmt = saveFmt, q = saveQ, side = saveSide;
         new Thread(() -> {
             Bitmap result = null;
             try {
@@ -958,10 +1035,17 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                     src = MediaSaver.load(this, media.uri, 2560);
                 }
                 result = Renderer.finish(src, snap);
-                boolean png = "image/png".equals(media.mime);
-                final android.net.Uri u = MediaSaver.savePicture(this, result, png);
+                int big = Math.max(result.getWidth(), result.getHeight());
+                if (side > 0 && big > side) {
+                    float f = (float) side / big;
+                    Bitmap small = Bitmap.createScaledBitmap(result, Math.max(1, Math.round(result.getWidth() * f)),
+                            Math.max(1, Math.round(result.getHeight() * f)), true);
+                    if (small != result) result.recycle();
+                    result = small;
+                }
+                final MediaSaver.Saved sv = MediaSaver.savePicture(this, result, fmt, q);
                 runOnUiThread(() -> {
-                    Toast.makeText(this, R.string.saved_copy, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, getString(R.string.sv_done, Fmt.size(sv.bytes), Fmt.size(media.size)), Toast.LENGTH_LONG).show();
                     Library.reload(this);
                     finish();
                 });

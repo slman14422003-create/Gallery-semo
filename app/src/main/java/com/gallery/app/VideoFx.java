@@ -10,7 +10,11 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 
 import androidx.annotation.OptIn;
+import androidx.media3.common.C;
 import androidx.media3.common.Effect;
+import androidx.media3.common.audio.AudioProcessor.AudioFormat;
+import androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException;
+import androidx.media3.common.audio.BaseAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.effect.OverlayEffect;
 import androidx.media3.effect.RgbMatrix;
@@ -20,6 +24,7 @@ import androidx.media3.effect.TextureOverlay;
 
 import com.google.common.collect.ImmutableList;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 /** Colour looks (fixed colour matrices) and text / emoji overlays shared by the video editor preview and export. */
@@ -126,6 +131,64 @@ final class VideoFx {
                 return pack(saturation(1.25f), 0f, 0f, 0f, 1.3f);
             default:
                 return null;
+        }
+    }
+
+    /** Fade gain 0..1 for a time inside a clip: ramps up over inUs at the start and down over outUs at the end. */
+    static float fadeGain(long tUs, long inUs, long outUs, long totalUs) {
+        float g = 1f;
+        if (inUs > 0 && tUs < inUs) g = Math.min(g, Math.max(0f, tUs / (float) inUs));
+        if (outUs > 0 && tUs > totalUs - outUs) g = Math.min(g, Math.max(0f, (totalUs - tUs) / (float) outUs));
+        return g;
+    }
+
+    /** Fades the picture to and from black. offsetUs is the clip start when the player is not clipped (live preview). */
+    static final class Fade implements RgbMatrix {
+        private final long inUs, outUs, totalUs, offsetUs;
+
+        Fade(long inUs, long outUs, long totalUs, long offsetUs) {
+            this.inUs = inUs;
+            this.outUs = outUs;
+            this.totalUs = totalUs;
+            this.offsetUs = offsetUs;
+        }
+
+        @Override
+        public float[] getMatrix(long presentationTimeUs, boolean useHdr) {
+            float g = fadeGain(presentationTimeUs - offsetUs, inUs, outUs, totalUs);
+            return new float[]{g, 0, 0, 0, 0, g, 0, 0, 0, 0, g, 0, 0, 0, 0, 1};
+        }
+    }
+
+    /** Fades 16-bit PCM audio in and out; placed last in the export audio chain so it sees the output timeline. */
+    static final class AudioFade extends BaseAudioProcessor {
+        private final long inUs, outUs, totalUs;
+        private long frames;
+
+        AudioFade(long inUs, long outUs, long totalUs) {
+            this.inUs = inUs;
+            this.outUs = outUs;
+            this.totalUs = totalUs;
+        }
+
+        @Override
+        protected AudioFormat onConfigure(AudioFormat f) throws UnhandledAudioFormatException {
+            if (f.encoding != C.ENCODING_PCM_16BIT) throw new UnhandledAudioFormatException(f);
+            return f;
+        }
+
+        @Override
+        public void queueInput(ByteBuffer in) {
+            int rem = in.remaining();
+            if (rem == 0) return;
+            ByteBuffer out = replaceOutputBuffer(rem);
+            int ch = inputAudioFormat.channelCount, rate = inputAudioFormat.sampleRate;
+            while (in.remaining() >= 2 * ch) {
+                float g = fadeGain(frames * 1000000L / rate, inUs, outUs, totalUs);
+                for (int c = 0; c < ch; c++) out.putShort((short) Math.round(in.getShort() * g));
+                frames++;
+            }
+            out.flip();
         }
     }
 

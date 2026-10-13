@@ -346,4 +346,23 @@
     <string name="v_text_box">خلفية</string>
     <string name="v_stickers">ملصقات</string>
     <string name="v_ov_hint">اسحب على الفيديو لتحريك العنصر المحدد. اضغط على النص مرة ثانية لتعديله.</string>
+    <string name="v_tab_compress">ضغط</string>
+    <string name="v_fade_in">تلاشي عند البداية</string>
+    <string name="v_fade_out">تلاشي عند النهاية</string>
+    <string name="v_off">بدون</string>
+    <string name="v_sec">%1$s ث</string>
+    <string name="v_quality">جودة التصدير</string>
+    <string name="vq_orig">قريبة من الأصل</string>
+    <string name="vq_high">عالية 1080p</string>
+    <string name="vq_bal">متوازنة 720p</string>
+    <string name="vq_small">صغيرة 540p</string>
+    <string name="vq_tiny">الأصغر 480p</string>
+    <string name="v_codec">الترميز</string>
+    <string name="v_h265">H.265 (أصغر)</string>
+    <string name="v_est">الأبعاد: %1$s\nالحجم المتوقع: %2$s (الأصل %3$s)</string>
+    <string name="sv_title">خيارات الحفظ</string>
+    <string name="sv_format">الصيغة</string>
+    <string name="sv_size">أطول ضلع (بكسل)</string>
+    <string name="sv_quality">الجودة</string>
+    <string name="sv_done">تم الحفظ: %1$s بدل %2$s</string>
 </resources>
