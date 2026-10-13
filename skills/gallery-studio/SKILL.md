@@ -29,3 +29,5 @@ description: Progress log and architecture notes for the Gallery Studio Android 
 - The user must choose Gallery Studio in the system chooser once (or set it as default) for other apps to show the in-app picker.
 - Android 13+ apps that call PickVisualMedia use the system photo picker action; this app registers for it, but the OS may still prefer its own picker on some devices.
 - Not compiled or run in this environment, build through the GitHub workflow and test on a device.
+
+- CI guard in .github/workflows/build.yml allows exactly MainActivity, OpenActivity and PickerActivity to be exported; any new exported screen must be added there on purpose.
