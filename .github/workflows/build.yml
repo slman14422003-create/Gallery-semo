@@ -86,18 +86,15 @@ jobs:
                | grep -v -E "/(Net|Updater)\.java:"; then
             echo "::error title=Network guard::network code outside Net.java"; exit 1
           fi
-          # 2) only the launcher, the "Open with" screen and the in-app media picker may be exported
+          # 2) only the launcher and the "Open with" screen may be exported
           M=app/src/main/AndroidManifest.xml
           EXP="$(grep -B1 'android:exported="true"' $M | grep -o 'android:name="[^"]*"' | sort | tr '\n' ' ')"
-          [ "$EXP" = 'android:name=".MainActivity" android:name=".OpenActivity" android:name=".PickerActivity" ' ] || { echo "::error::only MainActivity, OpenActivity and PickerActivity may be exported (found: $EXP)"; exit 1; }
+          [ "$EXP" = 'android:name=".MainActivity" android:name=".OpenActivity" ' ] || { echo "::error::only MainActivity and OpenActivity may be exported (found: $EXP)"; exit 1; }
           # the open-with screen must only read the data URI it is opened with (no path/text extras from other apps)
           for X in OpenActivity; do
             if grep -n 'getIntent()\.get\(String\|Parcelable\|Serializable\)\|\bin\.get\(String\|Parcelable\|Serializable\)' $SRC/com/gallery/app/$X.java; then
               echo "::error::$X must not read string/parcelable extras (it is exported)"; exit 1; fi
           done
-          # the picker only reads mime types / multi-select flags from the request, never parcelable or serializable extras
-          if grep -n 'getIntent()\.get\(Parcelable\|Serializable\)\|\bin\.get\(Parcelable\|Serializable\)' $SRC/com/gallery/app/PickerActivity.java; then
-            echo "::error::PickerActivity must not read parcelable/serializable extras (it is exported)"; exit 1; fi
           grep -q 'android:usesCleartextTraffic="false"' $M || { echo "::error::cleartext must stay disabled"; exit 1; }
           grep -q 'android:allowBackup="false"' $M || { echo "::error::backup must stay disabled"; exit 1; }
 

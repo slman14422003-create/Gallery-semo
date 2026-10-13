@@ -317,9 +317,6 @@
     <string name="tr_working">جارٍ الترجمة…</string>
     <string name="tr_failed">تعذّرت الترجمة، تحقق من الاتصال لتنزيل حزمة اللغة</string>
     <string name="tr_unsupported">هذه اللغة غير مدعومة</string>
-    <string name="pick_title">اختر من المعرض</string>
-    <string name="pick_selected">تم تحديد %d</string>
-    <string name="pick_empty">لا توجد عناصر للاختيار</string>
     <string name="beta2">بيتا 2</string>
     <string name="beta4">بيتا 4</string>
     <string name="ad_dehaze">إزالة الضباب (AI)</string>
@@ -334,4 +331,19 @@
     <string name="v_trim_none">لا توجد أجزاء سوداء للقص</string>
     <string name="v_working">جارٍ التحليل…</string>
     <string name="v_analyzing">جارٍ تحليل الفيديو…</string>
+    <string name="v_tab_edit">تعديل</string>
+    <string name="v_tab_speed">السرعة</string>
+    <string name="v_tab_filters">فلاتر</string>
+    <string name="v_tab_adjust">ضبط</string>
+    <string name="v_tab_audio">الصوت</string>
+    <string name="v_tab_text">نص وملصقات</string>
+    <string name="v_speed">سرعة التشغيل</string>
+    <string name="v_volume">الصوت</string>
+    <string name="v_fill">ملء الإطار</string>
+    <string name="v_fit">ملاءمة (حواف سوداء)</string>
+    <string name="v_text_hint">اكتب النص</string>
+    <string name="v_text_size">الحجم</string>
+    <string name="v_text_box">خلفية</string>
+    <string name="v_stickers">ملصقات</string>
+    <string name="v_ov_hint">اسحب على الفيديو لتحريك العنصر المحدد. اضغط على النص مرة ثانية لتعديله.</string>
 </resources>

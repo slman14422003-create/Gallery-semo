@@ -135,6 +135,8 @@ dependencies {
     implementation "androidx.media3:media3-transformer:$media3"
     implementation "androidx.media3:media3-effect:$media3"
     implementation "androidx.media3:media3-common:$media3"
+    // ImmutableList appears in the Media3 overlay / effects API used by the video editor
+    implementation 'com.google.guava:guava:33.4.8-android'
 
     // Video engine 2: libVLC - plays what ExoPlayer cannot (AVI, WMV, FLV, RMVB, DTS/AC3 audio, exotic codecs)
     implementation 'org.videolan.android:libvlc-all:3.6.0'

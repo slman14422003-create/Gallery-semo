@@ -834,6 +834,25 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         }), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42)));
         box.addView(top);
 
+        LinearLayout stickers = row();
+        for (final String em : VideoFx.EMOJI) {
+            TextView c = Ui.chip(this, em, false);
+            c.setTextSize(20);
+            c.setOnClickListener(v -> {
+                EditState.Label l = new EditState.Label();
+                l.text = em;
+                l.size = 0.18f;
+                push();
+                st.labels.add(l);
+                ev.setActive(l);
+                rebuild();
+            });
+            stickers.addView(c);
+        }
+        LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2);
+        stp.topMargin = Ui.dp(this, 2);
+        box.addView(hscroll(stickers), stp);
+
         // font + background style
         LinearLayout styles = row();
         final List<TextView> fontChips = new ArrayList<>();

@@ -313,9 +313,6 @@
     <string name="tr_working">Translating…</string>
     <string name="tr_failed">Translation failed, check your connection to download the language pack</string>
     <string name="tr_unsupported">This language is not supported</string>
-    <string name="pick_title">Choose from gallery</string>
-    <string name="pick_selected">%d selected</string>
-    <string name="pick_empty">Nothing to choose from</string>
     <string name="beta2">Beta 2</string>
     <string name="beta4">Beta 4</string>
     <string name="ad_dehaze">Dehaze (AI)</string>
@@ -330,4 +327,19 @@
     <string name="v_trim_none">No black parts to trim</string>
     <string name="v_working">Analysing…</string>
     <string name="v_analyzing">Analysing video…</string>
+    <string name="v_tab_edit">Edit</string>
+    <string name="v_tab_speed">Speed</string>
+    <string name="v_tab_filters">Filters</string>
+    <string name="v_tab_adjust">Adjust</string>
+    <string name="v_tab_audio">Audio</string>
+    <string name="v_tab_text">Text &amp; stickers</string>
+    <string name="v_speed">Playback speed</string>
+    <string name="v_volume">Volume</string>
+    <string name="v_fill">Fill frame</string>
+    <string name="v_fit">Fit (bars)</string>
+    <string name="v_text_hint">Type your text</string>
+    <string name="v_text_size">Size</string>
+    <string name="v_text_box">Box</string>
+    <string name="v_stickers">Stickers</string>
+    <string name="v_ov_hint">Drag on the video to move the selected item. Tap a text again to edit it.</string>
 </resources>
