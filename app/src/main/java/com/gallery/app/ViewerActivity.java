@@ -394,6 +394,9 @@ public class ViewerActivity extends BaseActivity {
         menuItems.add(new Object[]{R.string.ocr_translate, (Runnable) () -> TranslateSheet.show(this, text)});
         menuItems.add(new Object[]{R.string.ocr_search, (Runnable) () -> LiveActions.search(this, text)});
         menuItems.add(new Object[]{R.string.share, (Runnable) () -> LiveActions.shareText(this, text)});
+        if (Semo.hasNotes(this)) {
+            menuItems.add(new Object[]{R.string.eco_save_note, (Runnable) () -> Semo.sendToNotes(this, "", text)});
+        }
         menuPage = 0;
         renderMenu();
     }

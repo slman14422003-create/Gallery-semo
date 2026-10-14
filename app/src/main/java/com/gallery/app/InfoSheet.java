@@ -33,7 +33,14 @@ final class InfoSheet {
         row(a, box, R.string.i_type, m.mime);
         row(a, box, R.string.i_album, m.bucket);
         if (!m.path.isEmpty()) row(a, box, R.string.i_path, m.path);
-        new Dlg(a).setTitle(R.string.info).setView(sv).setPositiveButton(R.string.done, null).show();
+        Dlg dlg = new Dlg(a);
+        dlg.setTitle(R.string.info);
+        dlg.setView(sv);
+        dlg.setPositiveButton(R.string.done, null);
+        if (!m.path.isEmpty() && Semo.hasFiles(a)) {
+            dlg.setNeutralButton(R.string.eco_show_files, (d, w) -> Semo.showInFiles(a, m.path));
+        }
+        dlg.show();
 
         new Thread(() -> {
             final java.util.List<String[]> extra = new java.util.ArrayList<>();

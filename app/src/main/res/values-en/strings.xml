@@ -363,4 +363,13 @@
     <string name="sv_done">Saved: %1$s instead of %2$s</string>
     <string name="x_retry">Retrying with more compatible settings…</string>
     <string name="x_reset_tool">Reset</string>
+
+    <!-- Semo ecosystem -->
+    <string name="eco_title">Semo apps · tap to open</string>
+    <string name="eco_none">No other Semo apps are installed on this phone</string>
+    <string name="eco_show_files">Show in Files</string>
+    <string name="eco_link">Open photos and songs in Semo apps</string>
+
+    <!-- Semo ecosystem -->
+    <string name="eco_save_note">Save to Notes</string>
 </resources>

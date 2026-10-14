@@ -367,4 +367,13 @@
     <string name="sv_done">تم الحفظ: %1$s بدل %2$s</string>
     <string name="x_retry">جارٍ إعادة المحاولة بإعدادات أكثر توافقًا…</string>
     <string name="x_reset_tool">إعادة</string>
+
+    <!-- Semo ecosystem -->
+    <string name="eco_title">منظومة Semo · المس لفتح التطبيق</string>
+    <string name="eco_none">لا توجد تطبيقات Semo أخرى مثبّتة على هذا الهاتف</string>
+    <string name="eco_show_files">إظهار في الملفات</string>
+    <string name="eco_link">فتح الصور والأغاني في تطبيقات Semo</string>
+
+    <!-- Semo ecosystem -->
+    <string name="eco_save_note">حفظ في الملاحظات</string>
 </resources>

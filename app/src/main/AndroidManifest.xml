@@ -20,6 +20,12 @@
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+        <queries>
+        <intent>
+            <action android:name="app.semo.ECOSYSTEM" />
+        </intent>
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="false"
@@ -35,6 +41,10 @@
         android:largeHeap="true"
         android:theme="@style/AppTheme">
 
+        <!-- Semo ecosystem: what this app is, so the other Semo apps can find and use it -->
+        <meta-data android:name="app.semo.ROLE" android:value="gallery" />
+
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -44,6 +54,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="app.semo.ECOSYSTEM" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
