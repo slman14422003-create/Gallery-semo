@@ -173,9 +173,7 @@ final class Renderer {
         Bitmap out = Bitmap.createBitmap(src.getWidth(), src.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         Paint p = new Paint(Paint.FILTER_BITMAP_FLAG);
-        boolean tone = s.filter != 0 || s.exposure != 0 || s.brightness != 0 || s.contrast != 0 || s.saturation != 0
-                || s.warmth != 0 || s.tint != 0 || s.fade != 0;
-        if (tone) p.setColorFilter(new ColorMatrixColorFilter(matrix(s)));
+        if (s.toneChanged()) p.setColorFilter(new ColorMatrixColorFilter(matrix(s)));
         c.drawBitmap(src, 0, 0, p);
         float w = out.getWidth(), h = out.getHeight();
         if (s.dehaze > 0.01f) AiTools.dehaze(out, s.dehaze);
@@ -419,8 +417,9 @@ final class Renderer {
     static Bitmap finish(Bitmap src, EditState s) {
         Bitmap t = transform(src, s);
         Bitmap cr = crop(t, s);
-        Bitmap col = color(cr, s);
         if (t != src && t != cr) t.recycle();
+        Bitmap col = color(cr, s);
+        if (cr != src) cr.recycle();
         Canvas c = new Canvas(col);
         overlays(c, col.getWidth(), col.getHeight(), s);
         return col;

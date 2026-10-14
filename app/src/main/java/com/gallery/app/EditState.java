@@ -87,6 +87,12 @@ final class EditState {
         return s;
     }
 
+    /** True when the colour matrix (filter, light and colour sliders) has something to apply. */
+    boolean toneChanged() {
+        return filter != 0 || exposure != 0 || brightness != 0 || contrast != 0 || saturation != 0 || warmth != 0
+                || tint != 0 || fade != 0;
+    }
+
     /** True when any colour / light adjustment or filter is active (the pixels need the colour pass). */
     boolean colorChanged() {
         return filter != 0 || exposure != 0 || brightness != 0 || contrast != 0 || saturation != 0 || warmth != 0

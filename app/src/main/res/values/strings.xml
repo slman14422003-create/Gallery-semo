@@ -365,4 +365,6 @@
     <string name="sv_size">أطول ضلع (بكسل)</string>
     <string name="sv_quality">الجودة</string>
     <string name="sv_done">تم الحفظ: %1$s بدل %2$s</string>
+    <string name="x_retry">جارٍ إعادة المحاولة بإعدادات أكثر توافقًا…</string>
+    <string name="x_reset_tool">إعادة</string>
 </resources>

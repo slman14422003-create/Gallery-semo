@@ -38,6 +38,8 @@ final class EditorView extends View {
     static final int ERASER = -1;
     private int tool = EditState.PEN;            // pen / marker / shapes / ERASER
     private boolean eraseBegan;
+    private boolean grid;
+    private float grabX, grabY;
     private Bitmap plain;                        // the picture without colour edits and overlays (hold to compare)
     private boolean showOriginal;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -103,6 +105,22 @@ final class EditorView extends View {
         }
     }
 
+    /** Locks the ratio without moving the crop rectangle (used after a rotation, where the rectangle was rotated too). */
+    void setAspectLock(float a) {
+        aspect = a;
+    }
+
+    float aspect() {
+        return aspect;
+    }
+
+    /** Shows the thirds grid even when no handle is being dragged (while the straighten ruler moves). */
+    void setGrid(boolean on) {
+        if (grid == on) return;
+        grid = on;
+        invalidate();
+    }
+
     EditState.Label active() {
         return active;
     }
@@ -161,7 +179,7 @@ final class EditorView extends View {
             line.setColor(0xCCFFFFFF);
             line.setStrokeWidth(Ui.dp(getContext(), 1));
             c.drawRect(crop, line);
-            if (drag != 0) {   // the thirds grid only appears while a handle is being dragged (like iOS Photos)
+            if (drag != 0 || grid) {   // the thirds grid only appears while a handle or the ruler is being dragged (like iOS Photos)
                 line.setColor(0x80FFFFFF);
                 line.setStrokeWidth(Ui.dp(getContext(), 1) * 0.6f);
                 for (int i = 1; i < 3; i++) {
@@ -247,7 +265,23 @@ final class EditorView extends View {
             case TEXT:
                 return touchText(e, x, y);
             default:
-                return false;
+                return touchCompare(e);
+        }
+    }
+
+    /** Pressing and holding the photo shows the original (adjust and filter tabs), like iOS Photos. */
+    private boolean touchCompare(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                if (plain == null) return false;
+                showOriginal(true);
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                showOriginal(false);
+                return true;
+            default:
+                return true;
         }
     }
 
@@ -430,6 +464,8 @@ final class EditorView extends View {
                 EditState.Label l = labelAt(x, y);
                 if (l != null) {
                     active = l;
+                    grabX = l.x - (x - dst.left) / dst.width();
+                    grabY = l.y - (y - dst.top) / dst.height();
                     invalidate();
                     return true;
                 }
@@ -444,8 +480,8 @@ final class EditorView extends View {
                     if (listener != null) listener.onBegin();
                 }
                 if (moved) {
-                    active.x = Math.max(0f, Math.min(1f, (x - dst.left) / dst.width()));
-                    active.y = Math.max(0f, Math.min(1f, (y - dst.top) / dst.height()));
+                    active.x = Math.max(0f, Math.min(1f, (x - dst.left) / dst.width() + grabX));
+                    active.y = Math.max(0f, Math.min(1f, (y - dst.top) / dst.height() + grabY));
                     invalidate();
                 }
                 return true;

@@ -197,48 +197,59 @@ public class Dlg extends AlertDialog.Builder {
         if (shown(neu)) order.add(neu);
         if (order.isEmpty()) return;
 
-        // Buttons are stacked full-width: the main action on top, then the secondary ones.
+        // iOS alert: text buttons under a hairline; two buttons sit side by side, three or more are stacked.
         ViewParent parent = order.get(0).getParent();
+        boolean side = order.size() == 2;
         if (parent instanceof LinearLayout) {
             LinearLayout bar = (LinearLayout) parent;
-            bar.setOrientation(LinearLayout.VERTICAL);
+            bar.setOrientation(side ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
             View spacer = bar.findViewById(androidx.appcompat.R.id.spacer);
             if (spacer != null) spacer.setVisibility(View.GONE);
-            for (Button b : order) {
-                bar.removeView(b);
-                bar.addView(b);
+            List<Button> ordered = new ArrayList<>(order);
+            if (side) {
+                ordered.clear();
+                ordered.add(neg != null && shown(neg) ? neg : order.get(1));
+                ordered.add(pos != null && shown(pos) ? pos : order.get(0));
             }
-            bar.setPaddingRelative(Ui.dp(c, 18), Ui.dp(c, 6), Ui.dp(c, 18), Ui.dp(c, 16));
+            for (Button b : ordered) bar.removeView(b);
+            for (Button b : ordered) bar.addView(b);
+            bar.setPadding(0, Ui.dp(c, 8), 0, 0);
+            for (int i = 0; i < ordered.size(); i++) {
+                Button b = ordered.get(i);
+                iosButton(c, b, b == pos, side);
+            }
         }
-        for (Button b : order) {
-            if (b == pos) pill(c, b, destructive(c, b.getText()) ? 2 : 0);
-            else pill(c, b, 1);
+    }
+
+    private static void iosButton(Context c, Button b, boolean main, boolean side) {
+        b.setAllCaps(false);
+        b.setTypeface(Typeface.create("sans-serif-medium", main ? Typeface.BOLD : Typeface.NORMAL));
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        b.setMinHeight(Ui.dp(c, 48));
+        b.setMinWidth(0);
+        b.setStateListAnimator(null);
+        boolean bad = destructive(c, b.getText());
+        b.setTextColor(Ui.color(c, bad ? R.color.bad : R.color.accent));
+        GradientDrawable line = new GradientDrawable();
+        line.setColor(Ui.color(c, R.color.stroke));
+        android.graphics.drawable.LayerDrawable ld = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{line, new ColorDrawable(0x00000000)});
+        int h = Ios.hairPx(c);
+        ld.setLayerGravity(0, Gravity.TOP | Gravity.FILL_HORIZONTAL);
+        ld.setLayerHeight(0, h);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(Ui.color(c, R.color.ripple)), ld, new ColorDrawable(0xFFFFFFFF)));
+        ViewGroup.LayoutParams lp = b.getLayoutParams();
+        if (lp instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams m = (LinearLayout.LayoutParams) lp;
+            m.width = side ? 0 : ViewGroup.LayoutParams.MATCH_PARENT;
+            m.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            m.weight = side ? 1f : 0f;
+            m.setMargins(0, 0, 0, 0);
+            b.setLayoutParams(m);
         }
     }
 
     private static boolean shown(Button b) {
         return b != null && b.getVisibility() != View.GONE;
-    }
-
-    /** kind: 0 = primary, 1 = secondary, 2 = destructive primary. */
-    private static void pill(Context c, Button b, int kind) {
-        b.setAllCaps(false);
-        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        b.setMinHeight(Ui.dp(c, 48));
-        b.setMinWidth(0);
-        b.setStateListAnimator(null);
-        b.setBackgroundResource(kind == 1 ? R.drawable.btn_secondary
-                : kind == 2 ? R.drawable.btn_danger : R.drawable.btn_primary);
-        b.setTextColor(Ui.color(c, kind == 1 ? R.color.text_primary : R.color.on_accent));
-        ViewGroup.LayoutParams lp = b.getLayoutParams();
-        if (lp instanceof LinearLayout.LayoutParams) {
-            LinearLayout.LayoutParams m = (LinearLayout.LayoutParams) lp;
-            m.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            m.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            m.weight = 0;
-            m.setMargins(0, Ui.dp(c, 4), 0, Ui.dp(c, 4));
-            b.setLayoutParams(m);
-        }
     }
 }

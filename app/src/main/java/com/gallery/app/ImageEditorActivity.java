@@ -3,6 +3,7 @@ package com.gallery.app;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -18,7 +19,6 @@ import android.widget.HorizontalScrollView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -32,10 +32,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Photo editor (beta 3): crop, straighten and rotate, light and colour (exposure, tint, fade, sharpen,
- * denoise, grain...), 14 filters with intensity, drawing (pen, marker, shapes, eraser), styled text, and a
- * one-tap local AI enhance (see {@link AutoEnhance}) that reads the photo itself — no model download, no
- * network call, ever. Saves a copy; the original is never touched.
+ * Photo editor in the iOS Photos layout: Cancel / undo / redo / Done on top, the picture in the middle, a tool
+ * panel and a round-icon toolbar at the bottom. Tools: crop with straighten ruler, adjust dials, filters,
+ * markup and text. Saves a copy; the original is never touched.
  */
 public class ImageEditorActivity extends BaseActivity implements EditorView.Listener {
     private static final int[] COLORS = {0xFFFFFFFF, 0xFF111111, 0xFFFF3B30, 0xFFFF9500, 0xFFFFD60A, 0xFF34C759, 0xFF0A84FF, 0xFFBF5AF2, 0xFFFF2D92};
@@ -50,11 +49,11 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private static final int[] FONT_NAMES = {R.string.tx_f_sans, R.string.tx_f_serif, R.string.tx_f_mono, R.string.tx_f_script};
     private static final int[] BOX_NAMES = {R.string.tx_bg_none, R.string.tx_bg_dark, R.string.tx_bg_light};
 
-    private static final int MODE_IMAGE = 0, MODE_TOOL = 1, MODE_TEXT = 2;
+    private static final int MODE_TOOL = 1, MODE_TEXT = 2;
 
     private Media media;
-    private Bitmap preview;          // source at preview size
-    private Bitmap transformed;      // preview after rotate / flip / straighten
+    private Bitmap preview;
+    private Bitmap transformed;
     private int tKey = -1;
     private EditState st = new EditState();
     private final List<EditState> undo = new ArrayList<>();
@@ -72,11 +71,12 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private float textSize = 0.07f;
     private int textFont = 0;
     private int textBox = 0;
+    private float aspectVal = 0f;
+    private int adjSel = 0;
     private final List<TextView> aspectChips = new ArrayList<>();
-    private LinearLayout[] tabViews = new LinearLayout[5];
+    private final LinearLayout[] tabViews = new LinearLayout[5];
     private SpinnerView spinner;
 
-    // previews are rendered off the UI thread so sliders stay smooth even with sharpen / grain on
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Object lock = new Object();
     private volatile int gen = 0;
@@ -94,52 +94,32 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         root.setBackgroundColor(Ui.color(this, R.color.bg));
         setContentView(root);
 
-        // header
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 6));
-        ImageButton close = new ImageButton(this, null, 0, R.style.IconButton);
-        close.setImageResource(R.drawable.ic_cancel);
-        close.setContentDescription(getString(R.string.cancel));
-        close.setOnClickListener(v -> onBackPressedDispatcher());
-        head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
-        LinearLayout tl = new LinearLayout(this);
-        tl.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = new TextView(this);
-        title.setText(R.string.edit_photo);
-        title.setTextColor(Ui.color(this, R.color.text_primary));
-        title.setTextSize(17);
-        title.setSingleLine(true);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        title.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
-        tl.addView(title, new LinearLayout.LayoutParams(-2, -2));
-        tl.addView(betaBadge());
-        head.addView(tl, new LinearLayout.LayoutParams(0, -2, 1f));
-        undoBtn = new ImageButton(this, null, 0, R.style.IconButton);
-        undoBtn.setImageResource(R.drawable.ic_undo);
-        undoBtn.setContentDescription(getString(R.string.undo));
-        undoBtn.setOnClickListener(v -> undo());
+        head.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
+        LinearLayout left = new LinearLayout(this);
+        left.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        TextView cancel = Ios.navText(this, getString(R.string.cancel), false);
+        cancel.setOnClickListener(v -> onBackPressedDispatcher());
+        left.addView(cancel);
+        head.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout mid = new LinearLayout(this);
+        mid.setGravity(Gravity.CENTER);
+        mid.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        undoBtn = Ios.navIcon(this, R.drawable.ic_undo, R.string.undo, v -> undo());
         undoBtn.setAlpha(0.35f);
-        head.addView(undoBtn, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
-        redoBtn = new ImageButton(this, null, 0, R.style.IconButton);
-        redoBtn.setImageResource(R.drawable.ic_redo);
-        redoBtn.setContentDescription(getString(R.string.redo));
-        redoBtn.setOnClickListener(v -> redo());
+        redoBtn = Ios.navIcon(this, R.drawable.ic_redo, R.string.redo, v -> redo());
         redoBtn.setAlpha(0.35f);
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40));
-        rp.setMarginEnd(Ui.dp(this, 8));
-        head.addView(redoBtn, rp);
-        saveBtn = new TextView(this);
-        saveBtn.setText(R.string.save_copy);
-        saveBtn.setTextColor(Ui.color(this, R.color.on_accent));
-        saveBtn.setTextSize(14.5f);
-        saveBtn.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        saveBtn.setBackgroundResource(R.drawable.btn_primary);
-        saveBtn.setGravity(Gravity.CENTER);
-        saveBtn.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
+        mid.addView(undoBtn, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+        mid.addView(redoBtn, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
+        head.addView(mid, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout right = new LinearLayout(this);
+        right.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        saveBtn = Ios.navText(this, getString(R.string.done), true);
         saveBtn.setOnClickListener(v -> save());
-        head.addView(saveBtn, new LinearLayout.LayoutParams(-2, Ui.dp(this, 38)));
-        root.addView(head);
+        right.addView(saveBtn);
+        head.addView(right, new LinearLayout.LayoutParams(0, -2, 1f));
+        root.addView(head, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
 
         FrameLayout canvasBox = new FrameLayout(this);
         canvasBox.setBackgroundColor(Ui.color(this, R.color.bg_group));
@@ -152,39 +132,23 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         root.addView(canvasBox, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         panel = new FrameLayout(this);
+        panel.setMinimumHeight(Ui.dp(this, 168));
         root.addView(panel, new LinearLayout.LayoutParams(-1, -2));
 
-        // tab bar (same floating pill as the main navigation)
+        root.addView(Ios.hairline(this));
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackgroundResource(R.drawable.bg_nav_float);
-        bar.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6));
-        int[] icons = {R.drawable.ic_crop, R.drawable.ic_adjust, R.drawable.ic_wand, R.drawable.ic_brush, R.drawable.ic_text};
+        bar.setPadding(Ui.dp(this, 8), Ui.dp(this, 2), Ui.dp(this, 8), Ui.dp(this, 2));
+        int[] icons = {R.drawable.ic_crop, R.drawable.ic_adjust, R.drawable.ic_palette, R.drawable.ic_brush, R.drawable.ic_text};
         int[] names = {R.string.tab_crop, R.string.tab_adjust, R.string.tab_filters, R.string.tab_draw, R.string.tab_text};
         for (int i = 0; i < 5; i++) {
             final int idx = i;
-            LinearLayout it = new LinearLayout(this);
-            it.setGravity(Gravity.CENTER);
-            it.setOrientation(LinearLayout.VERTICAL);
-            it.setContentDescription(getString(names[i]));
-            ImageView ic = new ImageView(this);
-            ic.setImageResource(icons[i]);
-            it.addView(ic, new LinearLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24)));
-            TextView t = new TextView(this);
-            t.setText(names[i]);
-            t.setTextSize(10.5f);
-            t.setSingleLine(true);
-            t.setGravity(Gravity.CENTER);
-            t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            it.addView(t);
-            Ui.press(this, it);
+            LinearLayout it = Ios.toolItem(this, icons[i], getString(names[i]));
             it.setOnClickListener(v -> selectTab(idx));
             tabViews[i] = it;
-            bar.addView(it, new LinearLayout.LayoutParams(0, Ui.dp(this, 52), 1f));
+            bar.addView(it, new LinearLayout.LayoutParams(0, -2, 1f));
         }
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, -2);
-        bp.setMargins(Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 12));
-        root.addView(bar, bp);
+        root.addView(bar, new LinearLayout.LayoutParams(-1, -2));
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -198,9 +162,10 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             try {
                 final Bitmap b = MediaSaver.load(this, media.uri, 1600);
                 runOnUiThread(() -> {
+                    if (isDestroyed()) return;
                     preview = b;
                     spinner.setVisibility(View.GONE);
-                    selectTab(0);
+                    selectTab(1);
                 });
             } catch (Throwable e) {
                 runOnUiThread(() -> {
@@ -226,9 +191,9 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
         g.setColor(Ui.color(this, R.color.surface));
-        g.setStroke(Ui.dp(this, 1), Ui.color(this, R.color.stroke_soft));
+        g.setStroke(Ios.hairPx(this), Ui.color(this, R.color.stroke));
         cmp.setBackground(g);
-        cmp.setElevation(Ui.dp(this, 3));
+        cmp.setElevation(Ui.dp(this, 2));
         cmp.setContentDescription(getString(R.string.compare_hold));
         cmp.setOnTouchListener((v, e) -> {
             switch (e.getActionMasked()) {
@@ -247,7 +212,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             }
             return true;
         });
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44), Gravity.BOTTOM | Gravity.START);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.BOTTOM | Gravity.START);
         lp.setMargins(Ui.dp(this, 14), 0, Ui.dp(this, 14), Ui.dp(this, 12));
         cmp.setLayoutParams(lp);
         return cmp;
@@ -262,20 +227,6 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         new Dlg(this).setTitle(R.string.discard_title).setMessage(R.string.discard_msg)
                 .setPositiveButton(R.string.discard, (d, w) -> finish())
                 .setNegativeButton(R.string.keep_editing, null).show();
-    }
-
-    private TextView betaBadge() {
-        TextView b = new TextView(this);
-        b.setText(R.string.beta4);
-        b.setTextSize(10.5f);
-        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        b.setTextColor(Ui.color(this, R.color.accent_text));
-        GradientDrawable g = new GradientDrawable();
-        g.setCornerRadius(Ui.dp(this, 20));
-        g.setColor((Ui.color(this, R.color.accent_text) & 0x00FFFFFF) | 0x26000000);
-        b.setBackground(g);
-        b.setPadding(Ui.dp(this, 8), Ui.dp(this, 2), Ui.dp(this, 8), Ui.dp(this, 2));
-        return b;
     }
 
     // ------------------------------------------------------------------ rendering
@@ -293,7 +244,6 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         }
     }
 
-    /** Immediate rebuild (tab switches, taps). */
     private void rebuild() {
         if (preview == null || ev == null) return;
         gen++;
@@ -301,7 +251,6 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         ev.set(r[0], st, r[1]);
     }
 
-    /** Rebuild on the worker thread; only the newest request is shown (used while a slider is dragged). */
     private void rebuildAsync() {
         if (preview == null || ev == null) return;
         final int g = ++gen;
@@ -370,16 +319,12 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private void selectTab(int idx) {
         if (preview == null) return;
         tab = idx;
-        for (int i = 0; i < 5; i++) {
-            boolean on = i == idx;
-            tabViews[i].setBackgroundResource(on ? R.drawable.bg_nav_active : 0);
-            int col = Ui.color(this, on ? R.color.on_accent : R.color.text_secondary);
-            ((ImageView) tabViews[i].getChildAt(0)).setImageTintList(ColorStateList.valueOf(col));
-            ((TextView) tabViews[i].getChildAt(1)).setTextColor(col);
-        }
+        for (int i = 0; i < 5; i++) Ios.setToolSelected(this, tabViews[i], i == idx);
+        ev.setGrid(false);
         ev.setMode(idx == 0 ? EditorView.CROP : idx == 3 ? EditorView.DRAW : idx == 4 ? EditorView.TEXT : EditorView.NONE);
         ev.setBrush(brushColor, brushW);
         ev.setTool(drawTool);
+        if (idx == 0) ev.setAspectLock(aspectVal);
         panel.removeAllViews();
         try {
             View p = idx == 0 ? cropPanel() : idx == 1 ? adjustPanel() : idx == 2 ? filterPanel() : idx == 3 ? drawPanel() : textPanel();
@@ -397,14 +342,6 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         return l;
     }
 
-    private ImageButton toolIcon(int icon, int desc, View.OnClickListener c) {
-        ImageButton b = new ImageButton(this, null, 0, R.style.IconButton);
-        b.setImageResource(icon);
-        b.setContentDescription(getString(desc));
-        b.setOnClickListener(c);
-        return b;
-    }
-
     private HorizontalScrollView hscroll(LinearLayout content) {
         HorizontalScrollView hs = new HorizontalScrollView(this);
         hs.setHorizontalScrollBarEnabled(false);
@@ -413,124 +350,185 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         return hs;
     }
 
-    // --- crop & rotate
+    // --- crop, rotate, straighten
+
+    private void rotateCrop(boolean cw) {
+        float l = st.cl, t = st.ct, r = st.cr, b = st.cb;
+        if (cw) {
+            st.cl = 1f - b;
+            st.ct = l;
+            st.cr = 1f - t;
+            st.cb = r;
+        } else {
+            st.cl = t;
+            st.ct = 1f - r;
+            st.cr = b;
+            st.cb = 1f - l;
+        }
+    }
+
+    private void rotate(boolean cw) {
+        push();
+        st.rot = (st.rot + (cw ? 1 : 3)) % 4;
+        rotateCrop(cw);
+        if (aspectVal > 0f) aspectVal = 1f / aspectVal;
+        ev.setAspectLock(aspectVal);
+        rebuild();
+        refreshAspectChips();
+    }
+
+    /** Flips what is shown on screen: with a quarter turn applied, the stored flip axis is the other one. */
+    private void flip(boolean horizontal) {
+        push();
+        boolean odd = st.rot % 2 == 1;
+        if (horizontal != odd) st.flipH = !st.flipH;
+        else st.flipV = !st.flipV;
+        st.angle = -st.angle;
+        float l = st.cl, t = st.ct, r = st.cr, b = st.cb;
+        if (horizontal) {
+            st.cl = 1f - r;
+            st.cr = 1f - l;
+        } else {
+            st.ct = 1f - b;
+            st.cb = 1f - t;
+        }
+        rebuild();
+        selectTab(0);
+    }
 
     private View cropPanel() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 2), Ui.dp(this, 16), Ui.dp(this, 4));
+        box.setPadding(Ui.dp(this, 12), Ui.dp(this, 2), Ui.dp(this, 12), Ui.dp(this, 4));
         LinearLayout ops = row();
         ops.setGravity(Gravity.CENTER);
-        ops.addView(toolIcon(R.drawable.ic_rotate_left, R.string.rot_left, v -> {
-            push();
-            st.rot = (st.rot + 3) % 4;
-            st.resetCrop();
-            rebuild();
-        }), new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 44)));
-        ops.addView(toolIcon(R.drawable.ic_rotate, R.string.rot_right, v -> {
-            push();
-            st.rot = (st.rot + 1) % 4;
-            st.resetCrop();
-            rebuild();
-        }), new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 44)));
-        ops.addView(toolIcon(R.drawable.ic_flip, R.string.flip_h, v -> {
-            push();
-            st.flipH = !st.flipH;
-            st.resetCrop();
-            rebuild();
-        }), new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 44)));
-        ImageButton fv = toolIcon(R.drawable.ic_flip, R.string.flip_v, v -> {
-            push();
-            st.flipV = !st.flipV;
-            st.resetCrop();
-            rebuild();
-        });
-        fv.setRotation(90f);
-        ops.addView(fv, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 44)));
+        ops.addView(cropIcon(R.drawable.ic_rotate_left, R.string.rot_left, v -> rotate(false), 0f));
+        ops.addView(cropIcon(R.drawable.ic_rotate, R.string.rot_right, v -> rotate(true), 0f));
+        ops.addView(cropIcon(R.drawable.ic_flip, R.string.flip_h, v -> flip(true), 0f));
+        ops.addView(cropIcon(R.drawable.ic_flip, R.string.flip_v, v -> flip(false), 90f));
+        TextView auto = Ui.chip(this, getString(R.string.ad_straight), false);
+        auto.setOnClickListener(v -> autoStraighten());
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, -2);
+        ap.setMarginStart(Ui.dp(this, 8));
+        ops.addView(auto, ap);
         box.addView(ops);
-        slider(box, R.string.cr_straighten, st.angle, -45f, 45f, 0f, 1f, "°", MODE_IMAGE, v -> {
-            st.angle = v;
-            st.resetCrop();
+
+        final RulerView ruler = new RulerView(this);
+        ruler.configure(-45f, 45f, 0f, 90, 5);
+        ruler.setFormat(v -> String.format(Locale.US, "%.1f\u00B0", v));
+        ruler.setValue(st.angle);
+        ruler.setListener(new RulerView.Listener() {
+            @Override
+            public void onStart() {
+                push();
+                ev.setGrid(true);
+            }
+
+            @Override
+            public void onValue(float v) {
+                st.angle = v;
+                rebuildAsync();
+            }
+
+            @Override
+            public void onEnd() {
+                ev.setGrid(false);
+            }
         });
+        box.addView(ruler, new LinearLayout.LayoutParams(-1, -2));
+
         LinearLayout chips = row();
         aspectChips.clear();
         for (int i = 0; i < ASPECTS.length; i++) {
             final int k = i;
-            TextView c = Ui.chip(this, getString(ASPECT_NAMES[i]), i == 0);
-            c.setOnClickListener(v -> {
-                for (int j = 0; j < aspectChips.size(); j++) Ui.setChip(this, aspectChips.get(j), j == k);
-                push();
-                float a = ASPECTS[k];
-                if (a < 0) a = (float) transformed.getWidth() / transformed.getHeight();
-                st.resetCrop();
-                ev.setAspect(a);
-                if (a == 0) {
-                    ev.setAspect(0);
-                    ev.setMode(EditorView.CROP);
-                }
-            });
+            TextView c = Ui.chip(this, getString(ASPECT_NAMES[i]), false);
+            c.setOnClickListener(v -> chooseAspect(k));
             aspectChips.add(c);
             chips.addView(c);
         }
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
-        hp.topMargin = Ui.dp(this, 2);
-        box.addView(hscroll(chips), hp);
+        box.addView(hscroll(chips), new LinearLayout.LayoutParams(-1, -2));
+        refreshAspectChips();
         return box;
+    }
+
+    private ImageButton cropIcon(int icon, int desc, View.OnClickListener c, float rotation) {
+        ImageButton b = Ios.panelIcon(this, icon, desc, c);
+        b.setRotation(rotation);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42));
+        lp.setMargins(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    private void chooseAspect(int k) {
+        if (transformed == null) return;
+        push();
+        float a = ASPECTS[k];
+        if (a < 0f) a = (float) transformed.getWidth() / transformed.getHeight();
+        aspectVal = a;
+        st.resetCrop();
+        if (a > 0f) {
+            ev.setAspect(a);
+        } else {
+            ev.setAspectLock(0f);
+            ev.setMode(EditorView.CROP);
+        }
+        refreshAspectChips();
+    }
+
+    private void refreshAspectChips() {
+        if (aspectChips.isEmpty()) return;
+        float orig = transformed != null ? (float) transformed.getWidth() / transformed.getHeight() : 0f;
+        int match = -1;
+        if (aspectVal <= 0f) {
+            match = 0;
+        } else {
+            for (int i = 2; i < ASPECTS.length; i++) {
+                if (Math.abs(ASPECTS[i] - aspectVal) < 0.005f) {
+                    match = i;
+                    break;
+                }
+            }
+            if (match < 0 && Math.abs(orig - aspectVal) < 0.005f) match = 1;
+        }
+        for (int i = 0; i < aspectChips.size(); i++) Ui.setChip(this, aspectChips.get(i), i == match);
     }
 
     // --- adjust
 
     private View adjustPanel() {
-        ScrollView sv = new ScrollView(this);
-        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 2), Ui.dp(this, 16), Ui.dp(this, 4));
-        LinearLayout top = row();
-        TextView auto = Ui.chip(this, "✨  " + getString(R.string.ad_auto), false);
-        auto.setOnClickListener(v -> {
-            push();
-            autoEnhance();   // runs the local AI pass on a worker thread; refreshes the panel itself when done
-        });
-        top.addView(auto);
-        TextView reset = Ui.chip(this, getString(R.string.ad_reset), false);
-        reset.setOnClickListener(v -> {
-            if (!st.colorChanged()) return;
+        AdjustPanel p = new AdjustPanel(this, st, AdjustPanel.imageTools(), new AdjustPanel.Host() {
+            @Override
+            public void onBegin() {
+                push();
+            }
+
+            @Override
+            public void onChange() {
+                rebuildAsync();
+            }
+        }, adjSel);
+        p.addAction(R.drawable.ic_refresh, getString(R.string.ad_reset), () -> {
+            if (!st.colorChanged() && st.filter == 0) return;
             push();
             st.resetAdjust();
             st.filter = 0;
             st.filterAmt = 1f;
+            adjSel = p.selected();
             selectTab(1);
         });
-        top.addView(reset);
-        TextView straight = Ui.chip(this, "📐  " + getString(R.string.ad_straight), false);
-        straight.setOnClickListener(v -> autoStraighten());
-        top.addView(straight);
-        box.addView(top);
-        slider(box, R.string.ad_exposure, st.exposure, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.exposure = v);
-        slider(box, R.string.ad_brightness, st.brightness, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.brightness = v);
-        slider(box, R.string.ad_contrast, st.contrast, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.contrast = v);
-        slider(box, R.string.ad_saturation, st.saturation, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.saturation = v);
-        slider(box, R.string.ad_warmth, st.warmth, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.warmth = v);
-        slider(box, R.string.ad_tint, st.tint, -1f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.tint = v);
-        slider(box, R.string.ad_fade, st.fade, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.fade = v);
-        slider(box, R.string.ad_sharpen, st.sharpen, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.sharpen = v);
-        slider(box, R.string.ad_denoise, st.denoise, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.denoise = v);
-        slider(box, R.string.ad_dehaze, st.dehaze, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.dehaze = v);
-        slider(box, R.string.ad_clarity, st.clarity, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.clarity = v);
-        slider(box, R.string.ad_shadows, st.shadows, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.shadows = v);
-        slider(box, R.string.ad_grain, st.grain, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.grain = v);
-        slider(box, R.string.ad_vignette, st.vignette, 0f, 1f, 0f, 100f, "", MODE_IMAGE, v -> st.vignette = v);
-        sv.addView(box);
-        sv.setLayoutParams(new FrameLayout.LayoutParams(-1, Ui.dp(this, 214)));
-        return sv;
+        p.addAction(R.drawable.ic_wand, getString(R.string.ad_auto), () -> {
+            adjSel = p.selected();
+            push();
+            autoEnhance();
+        });
+        p.setPadding(0, Ui.dp(this, 2), 0, 0);
+        return p;
     }
 
     /**
-     * Local AI (beta 3) — one tap reads the picture's own pixels (light, colour cast, how soft or grainy it
-     * is) and sets exposure, contrast, white balance, sharpen and denoise the way a person would drag them
-     * by hand. The analysis itself runs on {@link #worker} so a big photo never drops a frame; nothing here
-     * ever touches the network. See {@link AutoEnhance} for the actual statistics.
+     * One tap reads the picture's own pixels (light, colour cast, how soft or grainy it is) and sets the sliders
+     * the way a person would. The analysis runs on the worker so a big photo never drops a frame; no network.
      */
     private void autoEnhance() {
         if (preview == null) return;
@@ -549,7 +547,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             runOnUiThread(() -> {
                 if (isDestroyed() || preview != snapshot) {
                     spinner.setVisibility(View.GONE);
-                    return;   // the photo changed (or the screen closed) while this was analysing
+                    return;
                 }
                 st.exposure = 0f;
                 st.brightness = r.brightness;
@@ -589,81 +587,9 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                 }
                 push();
                 st.angle = Math.max(-45f, Math.min(45f, ang));
-                selectTab(1);
+                selectTab(0);
             });
         });
-    }
-
-    private interface FloatCb {
-        void on(float v);
-    }
-
-    private static String fmtVal(float v, float disp, String suffix) {
-        if ("°".equals(suffix)) return String.format(Locale.US, "%.1f°", v);
-        return String.valueOf(Math.round(v * disp));
-    }
-
-    /**
-     * iOS-style slider row. Tapping the label puts the slider back to its default; the knob ticks when it crosses the default.
-     * {@code mode}: image adjustment (undo step + live re-render), plain tool value, or text size.
-     */
-    private SeekBar slider(LinearLayout box, int label, float value, final float min, final float max, final float def,
-                           final float disp, final String suffix, final int mode, final FloatCb cb) {
-        final int steps = 200;
-        LinearLayout r = row();
-        TextView l = new TextView(this);
-        l.setText(label);
-        l.setTextColor(Ui.color(this, R.color.text_secondary));
-        l.setTextSize(13.5f);
-        l.setSingleLine(true);
-        r.addView(l, new LinearLayout.LayoutParams(Ui.dp(this, 92), -2));
-        final SeekBar sb = new SeekBar(this);
-        sb.setMax(steps);
-        final int defP = Math.round((def - min) / (max - min) * steps);
-        sb.setProgress(Math.round((value - min) / (max - min) * steps));
-        final TextView num = new TextView(this);
-        num.setTextColor(Ui.color(this, R.color.text_hint));
-        num.setTextSize(12.5f);
-        num.setGravity(Gravity.CENTER);
-        num.setText(fmtVal(value, disp, suffix));
-        final int[] last = {sb.getProgress()};
-        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar s, int p, boolean user) {
-                float v = p == defP ? def : min + (max - min) * p / steps;
-                num.setText(fmtVal(v, disp, suffix));
-                if (!user) return;
-                if ((last[0] - defP) * (p - defP) < 0 || (p == defP && last[0] != defP)) {
-                    s.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-                }
-                last[0] = p;
-                cb.on(v);
-                if (mode == MODE_IMAGE) rebuildAsync();
-                else if (mode == MODE_TEXT) ev.invalidate();
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar s) {
-                if (mode == MODE_IMAGE || (mode == MODE_TEXT && ev.active() != null)) push();
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar s) {
-            }
-        });
-        l.setOnClickListener(v -> {
-            if (mode == MODE_IMAGE || (mode == MODE_TEXT && ev.active() != null)) push();
-            sb.setProgress(defP);
-            last[0] = defP;
-            cb.on(def);
-            num.setText(fmtVal(def, disp, suffix));
-            if (mode == MODE_IMAGE) rebuildAsync();
-            else if (mode == MODE_TEXT) ev.invalidate();
-        });
-        r.addView(sb, new LinearLayout.LayoutParams(0, Ui.dp(this, 40), 1f));
-        r.addView(num, new LinearLayout.LayoutParams(Ui.dp(this, 42), -2));
-        box.addView(r);
-        return sb;
     }
 
     // --- filters
@@ -671,69 +597,79 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private View filterPanel() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout row = row();
-        row.setPadding(Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 12), Ui.dp(this, 2));
-        Bitmap small = Bitmap.createScaledBitmap(preview, 128, Math.max(1, 128 * preview.getHeight() / preview.getWidth()), true);
+        LinearLayout list = row();
+        list.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 2));
+        Bitmap small = Bitmap.createScaledBitmap(preview, 144, Math.max(1, 144 * preview.getHeight() / preview.getWidth()), true);
         final List<LinearLayout> cells = new ArrayList<>();
-        final View[] intensityRow = new View[1];
-        final SeekBar[] intensity = new SeekBar[1];
+        final RulerView ruler = new RulerView(this);
+        ruler.configure(0f, 1f, 1f, 50, 10);
+        ruler.setFormat(v -> String.valueOf(Math.round(v * 100f)));
+        ruler.setValue(st.filterAmt);
+        ruler.setListener(new RulerView.Listener() {
+            @Override
+            public void onStart() {
+                push();
+            }
+
+            @Override
+            public void onValue(float v) {
+                st.filterAmt = v;
+                rebuildAsync();
+            }
+
+            @Override
+            public void onEnd() {
+            }
+        });
         for (int i = 0; i < Renderer.FILTERS; i++) {
             final int k = i;
             LinearLayout cell = new LinearLayout(this);
             cell.setOrientation(LinearLayout.VERTICAL);
             cell.setGravity(Gravity.CENTER_HORIZONTAL);
-            cell.setPadding(Ui.dp(this, 5), Ui.dp(this, 4), Ui.dp(this, 5), Ui.dp(this, 4));
+            cell.setPadding(Ui.dp(this, 5), Ui.dp(this, 2), Ui.dp(this, 5), Ui.dp(this, 2));
             ImageView iv = new ImageView(this);
             iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
             Bitmap t = Bitmap.createBitmap(small.getWidth(), small.getHeight(), Bitmap.Config.ARGB_8888);
             Paint p = new Paint();
-            p.setColorFilter(new android.graphics.ColorMatrixColorFilter(Renderer.preset(i)));
+            p.setColorFilter(new ColorMatrixColorFilter(Renderer.preset(i)));
             new Canvas(t).drawBitmap(small, 0, 0, p);
             iv.setImageBitmap(t);
-            iv.setClipToOutline(true);
-            iv.setBackgroundResource(R.drawable.bg_tile);
-            cell.addView(iv, new LinearLayout.LayoutParams(Ui.dp(this, 70), Ui.dp(this, 70)));
+            cell.addView(iv, new LinearLayout.LayoutParams(Ui.dp(this, 72), Ui.dp(this, 72)));
             TextView n = new TextView(this);
             n.setText(FILTER_NAMES[i]);
             n.setTextSize(11.5f);
             n.setGravity(Gravity.CENTER);
             n.setSingleLine(true);
-            n.setPadding(0, Ui.dp(this, 4), 0, 0);
+            n.setPadding(0, Ui.dp(this, 5), 0, 0);
             cell.addView(n);
             cells.add(cell);
             cell.setOnClickListener(v -> {
                 push();
                 st.filter = k;
                 st.filterAmt = 1f;
-                if (intensity[0] != null) intensity[0].setProgress(200);
-                markFilters(cells, intensityRow[0]);
+                ruler.setValue(1f);
+                markFilters(cells, ruler);
                 rebuild();
             });
-            row.addView(cell);
+            list.addView(cell);
         }
-        box.addView(hscroll(row));
-        LinearLayout wrap = new LinearLayout(this);
-        wrap.setOrientation(LinearLayout.VERTICAL);
-        wrap.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), Ui.dp(this, 4));
-        intensity[0] = slider(wrap, R.string.fl_intensity, st.filterAmt, 0f, 1f, 1f, 100f, "", MODE_IMAGE, v -> st.filterAmt = v);
-        intensityRow[0] = (View) intensity[0].getParent();
-        box.addView(wrap);
-        markFilters(cells, intensityRow[0]);
+        box.addView(hscroll(list));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2);
+        rp.topMargin = Ui.dp(this, 4);
+        box.addView(ruler, rp);
+        markFilters(cells, ruler);
         return box;
     }
 
-    private void markFilters(List<LinearLayout> cells, View intensityRow) {
+    private void markFilters(List<LinearLayout> cells, View ruler) {
         for (int i = 0; i < cells.size(); i++) {
             boolean on = i == st.filter;
+            Ios.thumbFrame(this, cells.get(i).getChildAt(0), on);
             TextView n = (TextView) cells.get(i).getChildAt(1);
             n.setTextColor(Ui.color(this, on ? R.color.accent_text : R.color.text_secondary));
             n.setTypeface(Typeface.create("sans-serif-medium", on ? Typeface.BOLD : Typeface.NORMAL));
-            cells.get(i).setAlpha(on ? 1f : 0.82f);
         }
-        if (intensityRow != null) {
-            boolean show = st.filter != 0;
-            intensityRow.setVisibility(show ? View.VISIBLE : View.INVISIBLE);
-        }
+        ruler.setVisibility(st.filter != 0 ? View.VISIBLE : View.INVISIBLE);
     }
 
     // --- shared colour dots
@@ -765,12 +701,66 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         return g;
     }
 
+    private interface FloatCb {
+        void on(float v);
+    }
+
+    /** Thin iOS slider row used by the markup and text tabs. */
+    private SeekBar slider(LinearLayout box, int label, float value, final float min, final float max, final float def,
+                           final int mode, final FloatCb cb) {
+        final int steps = 200;
+        LinearLayout r = row();
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextColor(Ui.color(this, R.color.text_secondary));
+        l.setTextSize(13.5f);
+        l.setSingleLine(true);
+        r.addView(l, new LinearLayout.LayoutParams(Ui.dp(this, 92), -2));
+        final SeekBar sb = new SeekBar(this);
+        sb.setMax(steps);
+        final int defP = Math.round((def - min) / (max - min) * steps);
+        sb.setProgress(Math.round((value - min) / (max - min) * steps));
+        final int[] last = {sb.getProgress()};
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar s, int p, boolean user) {
+                if (!user) return;
+                float v = p == defP ? def : min + (max - min) * p / steps;
+                if ((last[0] - defP) * (p - defP) < 0 || (p == defP && last[0] != defP)) {
+                    s.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                }
+                last[0] = p;
+                cb.on(v);
+                if (mode == MODE_TEXT) ev.invalidate();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar s) {
+                if (mode == MODE_TEXT && ev.active() != null) push();
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar s) {
+            }
+        });
+        l.setOnClickListener(v -> {
+            if (mode == MODE_TEXT && ev.active() != null) push();
+            sb.setProgress(defP);
+            last[0] = defP;
+            cb.on(def);
+            if (mode == MODE_TEXT) ev.invalidate();
+        });
+        r.addView(sb, new LinearLayout.LayoutParams(0, Ui.dp(this, 40), 1f));
+        box.addView(r);
+        return sb;
+    }
+
     // --- draw
 
     private View drawPanel() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 4), Ui.dp(this, 16), Ui.dp(this, 4));
+        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 4));
         LinearLayout tools = row();
         final List<TextView> toolChips = new ArrayList<>();
         for (int i = 0; i < TOOLS.length; i++) {
@@ -786,12 +776,12 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         }
         box.addView(hscroll(tools));
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
-        hp.topMargin = Ui.dp(this, 2);
+        hp.topMargin = Ui.dp(this, 6);
         box.addView(hscroll(colorRow(brushColor, c -> {
             brushColor = c;
             ev.setBrush(brushColor, brushW);
         })), hp);
-        slider(box, R.string.brush_size, brushW, 0.003f, 0.04f, 0.012f, 1000f, "", MODE_TOOL, v -> {
+        slider(box, R.string.brush_size, brushW, 0.003f, 0.04f, 0.012f, MODE_TOOL, v -> {
             brushW = v;
             ev.setBrush(brushColor, brushW);
         });
@@ -803,10 +793,10 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private View textPanel() {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 4), Ui.dp(this, 16), Ui.dp(this, 4));
+        box.setPadding(Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 4));
         LinearLayout top = row();
         TextView add = new TextView(this);
-        add.setText("＋  " + getString(R.string.add_text));
+        add.setText("+  " + getString(R.string.add_text));
         add.setTextColor(Ui.color(this, R.color.on_accent));
         add.setTextSize(14);
         add.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -821,17 +811,17 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             l.box = textBox;
             editLabel(l);
         });
-        top.addView(add, new LinearLayout.LayoutParams(-2, Ui.dp(this, 38)));
-        View sp = new View(this);
-        top.addView(sp, new LinearLayout.LayoutParams(0, 1, 1f));
-        top.addView(toolIcon(R.drawable.ic_delete, R.string.delete, v -> {
+        top.addView(add, new LinearLayout.LayoutParams(-2, Ui.dp(this, 36)));
+        top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        ImageButton del = Ios.panelIcon(this, R.drawable.ic_delete, R.string.delete, v -> {
             EditState.Label a = ev.active();
             if (a == null) return;
             push();
             st.labels.remove(a);
             ev.setActive(null);
-            rebuild();
-        }), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 42)));
+            ev.invalidate();
+        });
+        top.addView(del, new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40)));
         box.addView(top);
 
         LinearLayout stickers = row();
@@ -845,15 +835,13 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                 push();
                 st.labels.add(l);
                 ev.setActive(l);
-                rebuild();
             });
             stickers.addView(c);
         }
         LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2);
-        stp.topMargin = Ui.dp(this, 2);
+        stp.topMargin = Ui.dp(this, 4);
         box.addView(hscroll(stickers), stp);
 
-        // font + background style
         LinearLayout styles = row();
         final List<TextView> fontChips = new ArrayList<>();
         final List<TextView> boxChips = new ArrayList<>();
@@ -867,7 +855,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                 if (a != null) {
                     push();
                     a.font = k;
-                    rebuild();
+                    ev.invalidate();
                 }
                 for (int j = 0; j < fontChips.size(); j++) Ui.setChip(this, fontChips.get(j), j == k);
             });
@@ -883,7 +871,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                 if (a != null) {
                     push();
                     a.box = k;
-                    rebuild();
+                    ev.invalidate();
                 }
                 for (int j = 0; j < boxChips.size(); j++) Ui.setChip(this, boxChips.get(j), j == k);
             });
@@ -902,10 +890,10 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             if (a != null) {
                 push();
                 a.color = c;
-                rebuild();
+                ev.invalidate();
             }
         })), hp);
-        slider(box, R.string.text_size, textSize, 0.03f, 0.2f, 0.07f, 1000f, "", MODE_TEXT, v -> {
+        slider(box, R.string.text_size, textSize, 0.03f, 0.2f, 0.07f, MODE_TEXT, v -> {
             textSize = v;
             EditState.Label a = ev.active();
             if (a != null) a.size = v;
@@ -931,7 +919,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                         if (isNew) st.labels.add(l);
                     }
                     ev.setActive(t.isEmpty() ? null : l);
-                    rebuild();
+                    ev.invalidate();
                 })
                 .setNegativeButton(R.string.cancel, null).show();
     }
@@ -972,8 +960,6 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         SeekBar sb = new SeekBar(this);
         sb.setMax(60);
         sb.setProgress(saveQ - 40);
-        sb.setProgressTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
-        sb.setThumbTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar s, int p, boolean user) {
@@ -1028,13 +1014,21 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         new Thread(() -> {
             Bitmap result = null;
             try {
-                Bitmap src;
-                try {
-                    src = MediaSaver.load(this, media.uri, 4096);
-                } catch (OutOfMemoryError oom) {
-                    src = MediaSaver.load(this, media.uri, 2560);
+                int longest = Math.max(media.w, media.h);
+                int[] tries = {Math.min(longest > 0 ? longest : 4096, 6144), 4096, 3072, 2048};
+                for (int i = 0; i < tries.length && result == null; i++) {
+                    if (i > 0 && tries[i] >= tries[i - 1]) continue;
+                    Bitmap src = null;
+                    try {
+                        src = MediaSaver.load(this, media.uri, tries[i]);
+                        result = Renderer.finish(src, snap);
+                    } catch (OutOfMemoryError oom) {
+                        result = null;
+                    } finally {
+                        if (src != null) src.recycle();
+                    }
                 }
-                result = Renderer.finish(src, snap);
+                if (result == null) throw new IllegalStateException("render");
                 int big = Math.max(result.getWidth(), result.getHeight());
                 if (side > 0 && big > side) {
                     float f = (float) side / big;

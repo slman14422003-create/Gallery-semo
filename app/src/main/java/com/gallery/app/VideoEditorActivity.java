@@ -2,6 +2,10 @@ package com.gallery.app;
 
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.ColorMatrixColorFilter;
+import android.graphics.Paint;
+import android.widget.ImageView;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadataRetriever;
 import android.os.Bundle;
@@ -31,18 +35,11 @@ import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.Player;
 import androidx.media3.common.audio.AudioProcessor;
-import androidx.media3.common.audio.ChannelMixingAudioProcessor;
-import androidx.media3.common.audio.ChannelMixingMatrix;
 import androidx.media3.common.audio.SpeedProvider;
 import androidx.media3.common.util.UnstableApi;
-import androidx.media3.effect.Brightness;
-import androidx.media3.effect.Contrast;
 import androidx.media3.effect.Crop;
 import androidx.media3.effect.FrameDropEffect;
-import androidx.media3.effect.HslAdjustment;
 import androidx.media3.effect.Presentation;
-import androidx.media3.effect.RgbAdjustment;
-import androidx.media3.effect.RgbFilter;
 import androidx.media3.effect.ScaleAndRotateTransformation;
 import androidx.media3.effect.SpeedChangeEffect;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -64,8 +61,9 @@ import java.util.Locale;
 public class VideoEditorActivity extends BaseActivity {
     private static final float[] RATIOS = {0f, 1f, 16f / 9f, 9f / 16f, 4f / 3f};
     private static final int[] RATIO_NAMES = {R.string.cr_original, R.string.cr_1_1, R.string.cr_16_9, R.string.cr_9_16, R.string.cr_4_3};
-    private static final int[] LOOK_NAMES = {R.string.fl_original, R.string.fl_bw, R.string.fl_warm, R.string.fl_cool, R.string.fl_vivid, R.string.fl_fade,
-            R.string.fl_sepia, R.string.fl_vintage, R.string.fl_cinema, R.string.fl_noir, R.string.fl_sunset, R.string.fl_ocean, R.string.fl_cyan, R.string.fl_dramatic};
+    private static final int[] LOOK_NAMES = {R.string.fl_original, R.string.fl_vivid, R.string.fl_warm, R.string.fl_cool,
+            R.string.fl_bw, R.string.fl_noir, R.string.fl_sepia, R.string.fl_fade, R.string.fl_dramatic,
+            R.string.fl_vintage, R.string.fl_cinema, R.string.fl_sunset, R.string.fl_ocean, R.string.fl_cyan};
     private static final float[] SPEEDS = {0.25f, 0.5f, 0.75f, 1f, 1.5f, 2f, 3f, 4f};
     private static final int[] TEXT_COLORS = {0xFFFFFFFF, 0xFF000000, 0xFFFF3B30, 0xFFFF9500, 0xFFFFCC00, 0xFF34C759, 0xFF0A84FF, 0xFFBF5AF2};
     private static final int TAB_TEXT = 5;
@@ -86,9 +84,18 @@ public class VideoEditorActivity extends BaseActivity {
 
     private int rot = 0;
     private boolean flipH = false, flipV = false, mute = false;
-    private int ratioIdx = 0, look = 0;
-    private float brightness = 0f, contrast = 0f, aiWarm = 0f, aiSat = 0f;
-    private SeekBar sbBright, sbContrast, sbSat, sbWarm, sbVolume, sbSize;
+    private int ratioIdx = 0;
+    private final EditState grade = new EditState();
+    private AdjustPanel adjust;
+    private int adjSel = 0;
+    private volatile Bitmap thumbFrame;
+    private LinearLayout filterList;
+    private RulerView filterRuler;
+    private final List<LinearLayout> filterCells = new ArrayList<>();
+    private final List<LinearLayout> toolItems = new ArrayList<>();
+    private boolean dragging, dragMoved;
+    private float dragX, dragY, grabX, grabY;
+    private SeekBar sbVolume, sbSize;
     private float speed = 1f, volume = 1f;
     private boolean fit = false;
     private volatile boolean hasAudio = true;
@@ -144,46 +151,22 @@ public class VideoEditorActivity extends BaseActivity {
         root.setBackgroundColor(Ui.color(this, R.color.bg));
         setContentView(root);
 
-        // header
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 14), Ui.dp(this, 6));
-        ImageButton close = new ImageButton(this, null, 0, R.style.IconButton);
-        close.setImageResource(R.drawable.ic_cancel);
-        close.setOnClickListener(v -> askLeave());
-        head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
-        TextView title = new TextView(this);
-        title.setText(R.string.edit_video);
-        title.setTextColor(Ui.color(this, R.color.text_primary));
-        title.setTextSize(17);
-        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        title.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
-        LinearLayout tl = new LinearLayout(this);
-        tl.setGravity(Gravity.CENTER_VERTICAL);
-        tl.addView(title);
-        TextView beta = new TextView(this);
-        beta.setText(R.string.beta4);
-        beta.setTextSize(10.5f);
-        beta.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        beta.setTextColor(Ui.color(this, R.color.accent_text));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(Ui.dp(this, 20));
-        bg.setColor((Ui.color(this, R.color.accent_text) & 0x00FFFFFF) | 0x26000000);
-        beta.setBackground(bg);
-        beta.setPadding(Ui.dp(this, 8), Ui.dp(this, 2), Ui.dp(this, 8), Ui.dp(this, 2));
-        tl.addView(beta);
-        head.addView(tl, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView export = new TextView(this);
-        export.setText(R.string.export);
-        export.setTextColor(Ui.color(this, R.color.on_accent));
-        export.setTextSize(14.5f);
-        export.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        export.setBackgroundResource(R.drawable.btn_primary);
-        export.setGravity(Gravity.CENTER);
-        export.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
+        head.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
+        LinearLayout left = new LinearLayout(this);
+        left.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        TextView cancel = Ios.navText(this, getString(R.string.cancel), false);
+        cancel.setOnClickListener(v -> askLeave());
+        left.addView(cancel);
+        head.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout right = new LinearLayout(this);
+        right.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        TextView export = Ios.navText(this, getString(R.string.done), true);
         export.setOnClickListener(v -> export());
-        head.addView(export, new LinearLayout.LayoutParams(-2, Ui.dp(this, 42)));
-        root.addView(head);
+        right.addView(export);
+        head.addView(right, new LinearLayout.LayoutParams(0, -2, 1f));
+        root.addView(head, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
 
         // preview
         FrameLayout pv = new FrameLayout(this);
@@ -277,23 +260,26 @@ public class VideoEditorActivity extends BaseActivity {
     private void buildTools(LinearLayout root) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout holder = new FrameLayout(this);
+        int[] names = {R.string.v_tab_edit, R.string.v_tab_speed, R.string.v_tab_filters, R.string.v_tab_adjust,
+                R.string.v_tab_audio, R.string.v_tab_text, R.string.v_ai, R.string.v_tab_compress};
+        int[] icons = {R.drawable.ic_crop, R.drawable.ic_speed, R.drawable.ic_palette, R.drawable.ic_adjust,
+                R.drawable.ic_volume, R.drawable.ic_text, R.drawable.ic_wand, R.drawable.ic_package};
         HorizontalScrollView tabScroll = new HorizontalScrollView(this);
         tabScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout tabRow = new LinearLayout(this);
-        tabRow.setPadding(Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 4));
-        int[] names = {R.string.v_tab_edit, R.string.v_tab_speed, R.string.v_tab_filters, R.string.v_tab_adjust,
-                R.string.v_tab_audio, R.string.v_tab_text, R.string.v_ai, R.string.v_tab_compress};
-        FrameLayout holder = new FrameLayout(this);
+        tabRow.setPadding(Ui.dp(this, 8), Ui.dp(this, 2), Ui.dp(this, 8), Ui.dp(this, 2));
         for (int i = 0; i < names.length; i++) {
             final int k = i;
-            TextView c = Ui.chip(this, getString(names[i]), i == 0);
-            c.setOnClickListener(v -> showTab(k));
-            tabChips.add(c);
-            tabRow.addView(c);
+            LinearLayout it = Ios.toolItem(this, icons[i], getString(names[i]));
+            it.setOnClickListener(v -> showTab(k));
+            toolItems.add(it);
+            tabRow.addView(it, new LinearLayout.LayoutParams(Ui.dp(this, 74), -2));
             ScrollView sc = new ScrollView(this);
+            sc.setOverScrollMode(View.OVER_SCROLL_NEVER);
             LinearLayout pg = new LinearLayout(this);
             pg.setOrientation(LinearLayout.VERTICAL);
-            pg.setPadding(Ui.dp(this, 14), Ui.dp(this, 2), Ui.dp(this, 14), Ui.dp(this, 10));
+            pg.setPadding(Ui.dp(this, 14), Ui.dp(this, 4), Ui.dp(this, 14), Ui.dp(this, 10));
             sc.addView(pg);
             sc.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
             holder.addView(sc, new FrameLayout.LayoutParams(-1, -1));
@@ -301,9 +287,10 @@ public class VideoEditorActivity extends BaseActivity {
             pages.add(pg);
         }
         tabScroll.addView(tabRow);
-        panel.addView(tabScroll);
         panel.addView(holder, new LinearLayout.LayoutParams(-1, 0, 1f));
-        root.addView(panel, new LinearLayout.LayoutParams(-1, Ui.dp(this, 250)));
+        panel.addView(Ios.hairline(this));
+        panel.addView(tabScroll);
+        root.addView(panel, new LinearLayout.LayoutParams(-1, Ui.dp(this, 262)));
         buildEditPage(pages.get(0));
         buildSpeedPage(pages.get(1));
         buildFilterPage(pages.get(2));
@@ -312,13 +299,14 @@ public class VideoEditorActivity extends BaseActivity {
         buildTextPage(pages.get(5));
         buildAiPage(pages.get(6));
         buildCompressPage(pages.get(7));
+        showTab(0);
     }
 
     private void showTab(int k) {
         curTab = k;
         for (int i = 0; i < scrolls.size(); i++) {
             scrolls.get(i).setVisibility(i == k ? View.VISIBLE : View.GONE);
-            Ui.setChip(this, tabChips.get(i), i == k);
+            Ios.setToolSelected(this, toolItems.get(i), i == k);
         }
     }
 
@@ -416,41 +404,99 @@ public class VideoEditorActivity extends BaseActivity {
     }
 
     private void buildFilterPage(LinearLayout t) {
-        t.addView(Ui.label(this, getString(R.string.look)));
-        t.addView(chipRow(LOOK_NAMES, 0, i -> {
-            look = i;
-            applyEffects();
-        }));
+        filterList = new LinearLayout(this);
+        filterList.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 4));
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.addView(filterList);
+        t.addView(hs);
+        filterRuler = new RulerView(this);
+        filterRuler.configure(0f, 1f, 1f, 50, 10);
+        filterRuler.setFormat(v -> String.valueOf(Math.round(v * 100f)));
+        filterRuler.setVisibility(View.INVISIBLE);
+        filterRuler.setListener(new RulerView.Listener() {
+            @Override
+            public void onStart() {
+            }
+
+            @Override
+            public void onValue(float v) {
+                grade.filterAmt = v;
+                scheduleApply();
+            }
+
+            @Override
+            public void onEnd() {
+            }
+        });
+        t.addView(filterRuler, new LinearLayout.LayoutParams(-1, -2));
+        buildFilterCells(null);
+    }
+
+    private void buildFilterCells(Bitmap frame) {
+        filterList.removeAllViews();
+        filterCells.clear();
+        Bitmap small = null;
+        if (frame != null) small = Bitmap.createScaledBitmap(frame, 144, Math.max(1, 144 * frame.getHeight() / Math.max(1, frame.getWidth())), true);
+        for (int i = 0; i < LOOK_NAMES.length; i++) {
+            final int k = i;
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER_HORIZONTAL);
+            cell.setPadding(Ui.dp(this, 5), Ui.dp(this, 2), Ui.dp(this, 5), Ui.dp(this, 2));
+            ImageView iv = new ImageView(this);
+            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            if (small != null) {
+                Bitmap th = Bitmap.createBitmap(small.getWidth(), small.getHeight(), Bitmap.Config.ARGB_8888);
+                Paint p = new Paint();
+                p.setColorFilter(new ColorMatrixColorFilter(Renderer.preset(i)));
+                new Canvas(th).drawBitmap(small, 0, 0, p);
+                iv.setImageBitmap(th);
+            }
+            cell.addView(iv, new LinearLayout.LayoutParams(Ui.dp(this, 72), Ui.dp(this, 72)));
+            TextView n = new TextView(this);
+            n.setText(LOOK_NAMES[i]);
+            n.setTextSize(11.5f);
+            n.setGravity(Gravity.CENTER);
+            n.setSingleLine(true);
+            n.setPadding(0, Ui.dp(this, 5), 0, 0);
+            cell.addView(n);
+            cell.setOnClickListener(v -> {
+                grade.filter = k;
+                grade.filterAmt = 1f;
+                filterRuler.setValue(1f);
+                markFilters();
+                applyEffects();
+            });
+            filterCells.add(cell);
+            filterList.addView(cell);
+        }
+        markFilters();
+    }
+
+    private void markFilters() {
+        for (int i = 0; i < filterCells.size(); i++) {
+            boolean on = i == grade.filter;
+            Ios.thumbFrame(this, filterCells.get(i).getChildAt(0), on);
+            TextView n = (TextView) filterCells.get(i).getChildAt(1);
+            n.setTextColor(Ui.color(this, on ? R.color.accent_text : R.color.text_secondary));
+        }
+        filterRuler.setVisibility(grade.filter != 0 ? View.VISIBLE : View.INVISIBLE);
     }
 
     private void buildAdjustPage(LinearLayout t) {
-        View bs = slider(R.string.ad_brightness, v -> {
-            brightness = v;
-            applyEffects();
-        });
-        sbBright = (SeekBar) ((LinearLayout) bs).getChildAt(1);
-        t.addView(bs);
-        View cs = slider(R.string.ad_contrast, v -> {
-            contrast = v;
-            applyEffects();
-        });
-        sbContrast = (SeekBar) ((LinearLayout) cs).getChildAt(1);
-        t.addView(cs);
-        View ss = slider(R.string.ad_saturation, v -> {
-            aiSat = v / 0.6f * 50f;
-            applyEffects();
-        });
-        sbSat = (SeekBar) ((LinearLayout) ss).getChildAt(1);
-        t.addView(ss);
-        View ws = slider(R.string.ad_warmth, v -> {
-            aiWarm = v / 0.6f;
-            applyEffects();
-        });
-        sbWarm = (SeekBar) ((LinearLayout) ws).getChildAt(1);
-        t.addView(ws);
-        TextView reset = Ui.chip(this, getString(R.string.ad_reset), false);
-        reset.setOnClickListener(v -> preset(0f, 0f, 0f, 0f));
-        t.addView(reset);
+        adjust = new AdjustPanel(this, grade, AdjustPanel.videoTools(), new AdjustPanel.Host() {
+            @Override
+            public void onBegin() {
+            }
+
+            @Override
+            public void onChange() {
+                scheduleApply();
+            }
+        }, adjSel);
+        adjust.addAction(R.drawable.ic_refresh, getString(R.string.ad_reset), () -> preset(0f, 0f, 0f, 0f));
+        t.addView(adjust);
     }
 
     private void buildAudioPage(LinearLayout t) {
@@ -646,14 +692,57 @@ public class VideoEditorActivity extends BaseActivity {
     }
 
     private boolean dragOverlay(View v, MotionEvent e) {
-        if (curTab != TAB_TEXT || selOv < 0 || selOv >= overlays.size()) return false;
         int w = Math.max(1, v.getWidth()), h = Math.max(1, v.getHeight());
-        VideoFx.Overlay o = overlays.get(selOv);
-        o.x = Math.max(-1f, Math.min(1f, e.getX() / w * 2f - 1f));
-        o.y = Math.max(-1f, Math.min(1f, 1f - e.getY() / h * 2f));
-        dirty = true;
-        scheduleApply();
-        return true;
+        boolean textTab = curTab == TAB_TEXT;
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN: {
+                dragging = false;
+                dragMoved = false;
+                dragX = e.getX();
+                dragY = e.getY();
+                if (textTab && !overlays.isEmpty()) {
+                    int best = -1;
+                    float bd = Ui.dp(this, 64);
+                    for (int i = 0; i < overlays.size(); i++) {
+                        VideoFx.Overlay o = overlays.get(i);
+                        float cx = (o.x + 1f) / 2f * w, cy = (1f - o.y) / 2f * h;
+                        float d = (float) Math.hypot(e.getX() - cx, e.getY() - cy) - o.size * Math.min(w, h) * 0.5f;
+                        if (d < bd) {
+                            bd = d;
+                            best = i;
+                        }
+                    }
+                    if (best >= 0) {
+                        if (best != selOv) selectOverlay(best);
+                        VideoFx.Overlay o = overlays.get(best);
+                        grabX = o.x;
+                        grabY = o.y;
+                        dragging = true;
+                    }
+                }
+                return true;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                if (Math.hypot(e.getX() - dragX, e.getY() - dragY) > Ui.dp(this, 6)) dragMoved = true;
+                if (dragging && selOv >= 0 && selOv < overlays.size() && dragMoved) {
+                    VideoFx.Overlay o = overlays.get(selOv);
+                    o.x = Math.max(-1f, Math.min(1f, grabX + (e.getX() - dragX) / w * 2f));
+                    o.y = Math.max(-1f, Math.min(1f, grabY - (e.getY() - dragY) / h * 2f));
+                    dirty = true;
+                    scheduleApply();
+                }
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+                if (!dragMoved && !dragging && player != null) {
+                    if (player.isPlaying()) player.pause();
+                    else playBtn.performClick();
+                }
+                dragging = false;
+                return true;
+            default:
+                return true;
+        }
     }
 
     private void scheduleApply() {
@@ -826,7 +915,7 @@ public class VideoEditorActivity extends BaseActivity {
                 } catch (Exception ignored) {
                 }
                 long d = media.duration > 0 ? media.duration : 1000;
-                int n = 9;
+                int n = 12;
                 for (int i = 0; i < n; i++) {
                     Bitmap b = r.getFrameAtTime(d * 1000L * i / n, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
                     if (b != null) out.add(Bitmap.createScaledBitmap(b, 120, Math.max(1, 120 * b.getHeight() / b.getWidth()), true));
@@ -838,7 +927,11 @@ public class VideoEditorActivity extends BaseActivity {
                 } catch (Exception ignored) {
                 }
             }
-            runOnUiThread(() -> trim.setThumbs(out));
+            final Bitmap mid = out.isEmpty() ? null : out.get(out.size() / 2);
+            runOnUiThread(() -> {
+                trim.setThumbs(out);
+                if (mid != null && !isDestroyed()) buildFilterCells(mid);
+            });
         }).start();
     }
 
@@ -868,32 +961,7 @@ public class VideoEditorActivity extends BaseActivity {
                 }
             }
         }
-        switch (look) {
-            case 1:
-                v.add(RgbFilter.createGrayscaleFilter());
-                break;
-            case 2:
-                v.add(new RgbAdjustment.Builder().setRedScale(1.12f).setBlueScale(0.86f).build());
-                break;
-            case 3:
-                v.add(new RgbAdjustment.Builder().setRedScale(0.88f).setBlueScale(1.14f).build());
-                break;
-            case 4:
-                v.add(new HslAdjustment.Builder().adjustSaturation(40f).build());
-                break;
-            case 5:
-                v.add(new Contrast(-0.22f));
-                v.add(new Brightness(0.05f));
-                break;
-            default: {
-                Effect fx = VideoFx.look(look);
-                if (fx != null) v.add(fx);
-            }
-        }
-        if (aiWarm != 0f) v.add(new RgbAdjustment.Builder().setRedScale(1f + 0.12f * aiWarm).setBlueScale(1f - 0.12f * aiWarm).build());
-        if (aiSat != 0f) v.add(new HslAdjustment.Builder().adjustSaturation(aiSat).build());
-        if (brightness != 0f) v.add(new Brightness(brightness));
-        if (contrast != 0f) v.add(new Contrast(contrast));
+        if (grade.toneChanged()) v.add(new VideoFx.Grade(Renderer.matrix(grade)));
         if (!overlays.isEmpty()) {
             int[] sz = outSize();
             v.add(VideoFx.overlays(overlays, sz[0], sz[1]));
@@ -931,19 +999,13 @@ public class VideoEditorActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ AI tools (on device, no network)
 
-    private void syncSliders() {
-        if (sbBright != null) sbBright.setProgress(Math.max(0, Math.min(200, Math.round(brightness / 0.6f * 100f) + 100)));
-        if (sbContrast != null) sbContrast.setProgress(Math.max(0, Math.min(200, Math.round(contrast / 0.6f * 100f) + 100)));
-        if (sbSat != null) sbSat.setProgress(Math.max(0, Math.min(200, Math.round(aiSat / 50f * 100f) + 100)));
-        if (sbWarm != null) sbWarm.setProgress(Math.max(0, Math.min(200, Math.round(aiWarm * 100f) + 100)));
-    }
-
     private void preset(float b, float c, float warm, float sat) {
-        brightness = b;
-        contrast = c;
-        aiWarm = warm;
-        aiSat = sat;
-        syncSliders();
+        grade.resetAdjust();
+        grade.brightness = Math.max(-1f, Math.min(1f, b * 2f));
+        grade.contrast = c;
+        grade.warmth = warm;
+        grade.saturation = Math.max(-1f, Math.min(1f, sat / 50f));
+        if (adjust != null) adjust.refresh();
         applyEffects();
     }
 
@@ -1029,9 +1091,13 @@ public class VideoEditorActivity extends BaseActivity {
                     Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
                     return;
                 }
-                preset(Math.max(-0.3f, Math.min(0.3f, out.brightness * 0.4f)),
-                        Math.max(-0.3f, Math.min(0.4f, out.contrast * 0.6f)),
-                        out.warmth, Math.max(-30f, Math.min(40f, out.saturation * 40f)));
+                grade.brightness = out.brightness;
+                grade.contrast = out.contrast;
+                grade.warmth = out.warmth;
+                grade.tint = out.tint;
+                grade.saturation = out.saturation;
+                if (adjust != null) adjust.refresh();
+                applyEffects();
             });
         }).start();
     }
@@ -1112,16 +1178,10 @@ public class VideoEditorActivity extends BaseActivity {
                 vfx.add(0, pair.second);
             }
         }
-        if (!silent && volume < 0.99f) {
-            ChannelMixingAudioProcessor mixer = new ChannelMixingAudioProcessor();
-            mixer.putChannelMixingMatrix(new ChannelMixingMatrix(1, 1, new float[]{volume}));
-            mixer.putChannelMixingMatrix(new ChannelMixingMatrix(2, 2, new float[]{volume, 0f, 0f, volume}));
-            audio.add(mixer);
-        }
-        if (!silent && (fadeInMs > 0 || fadeOutMs > 0)) {
+        if (!silent && (volume < 0.99f || fadeInMs > 0 || fadeOutMs > 0)) {
             long total = Math.round((e - s) / speed);
             long half = total / 2;
-            audio.add(new VideoFx.AudioFade(Math.min(fadeInMs, half) * 1000L, Math.min(fadeOutMs, half) * 1000L, total * 1000L));
+            audio.add(new VideoFx.AudioGain(volume, Math.min(fadeInMs, half) * 1000L, Math.min(fadeOutMs, half) * 1000L, total * 1000L));
         }
         int[] os = outSize();
         int vBps = VideoCompress.videoBitrate(os[0], os[1], quality, h265, srcBitrate);
@@ -1129,20 +1189,7 @@ public class VideoEditorActivity extends BaseActivity {
                 .setRemoveAudio(mute)
                 .setEffects(new Effects(audio, vfx))
                 .build();
-        transformer = new Transformer.Builder(this)
-                .setVideoMimeType(h265 ? MimeTypes.VIDEO_H265 : MimeTypes.VIDEO_H264)
-                .setEncoderFactory(VideoCompress.encoders(this, vBps, VideoCompress.audioBitrate(quality)))
-                .addListener(new Transformer.Listener() {
-                    @Override
-                    public void onCompleted(Composition composition, ExportResult result) {
-                        finishExport(out, null);
-                    }
-
-                    @Override
-                    public void onError(Composition composition, ExportResult result, ExportException ex) {
-                        finishExport(out, ex);
-                    }
-                }).build();
+        transformer = makeTransformer(out, vBps, false, em);
 
         LinearLayout box = Ui.box(this);
         progressText = new TextView(this);
@@ -1178,6 +1225,38 @@ public class VideoEditorActivity extends BaseActivity {
                 ui.postDelayed(this, 300);
             }
         }, 300);
+    }
+
+    private Transformer makeTransformer(final File out, final int vBps, final boolean safe, final EditedMediaItem em) {
+        Transformer.Builder b = new Transformer.Builder(this)
+                .setVideoMimeType(h265 && !safe ? MimeTypes.VIDEO_H265 : MimeTypes.VIDEO_H264);
+        if (!safe) b.setEncoderFactory(VideoCompress.encoders(this, vBps, VideoCompress.audioBitrate(quality)));
+        b.addListener(new Transformer.Listener() {
+            @Override
+            public void onCompleted(Composition composition, ExportResult result) {
+                finishExport(out, null);
+            }
+
+            @Override
+            public void onError(Composition composition, ExportResult result, ExportException ex) {
+                if (!safe && exporting) {
+                    ui.post(() -> {
+                        if (!exporting) return;
+                        if (progressText != null) progressText.setText(R.string.x_retry);
+                        out.delete();
+                        transformer = makeTransformer(out, vBps, true, em);
+                        try {
+                            transformer.start(em, out.getAbsolutePath());
+                        } catch (Throwable t) {
+                            finishExport(out, t);
+                        }
+                    });
+                    return;
+                }
+                finishExport(out, ex);
+            }
+        });
+        return b.build();
     }
 
     private void finishExport(final File tmp, final Throwable error) {

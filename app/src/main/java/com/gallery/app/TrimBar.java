@@ -33,7 +33,7 @@ final class TrimBar extends View {
         handleW = Ui.dp(c, 16);
         pad = Ui.dp(c, 18);
         minGap = Ui.dp(c, 40);
-        accent = Ui.color(c, R.color.accent);
+        accent = Ios.YELLOW;
     }
 
     void setListener(Listener l) {
@@ -122,10 +122,19 @@ final class TrimBar extends View {
         RectF rr = new RectF(xOf(end), strip.top - t, xOf(end) + handleW, strip.bottom + t);
         c.drawRoundRect(l, r, r, p);
         c.drawRoundRect(rr, r, r, p);
+        p.setColor(0xFF1C1C1E);
+        p.setStyle(Paint.Style.STROKE);
+        p.setStrokeWidth(Ui.dp(getContext(), 2));
+        p.setStrokeCap(Paint.Cap.ROUND);
+        float ch = Ui.dp(getContext(), 5), cw = Ui.dp(getContext(), 3);
+        float ly = l.centerY(), lx = l.centerX();
+        c.drawLine(lx + cw / 2, ly - ch, lx - cw / 2, ly, p);
+        c.drawLine(lx - cw / 2, ly, lx + cw / 2, ly + ch, p);
+        float rx = rr.centerX();
+        c.drawLine(rx - cw / 2, ly - ch, rx + cw / 2, ly, p);
+        c.drawLine(rx + cw / 2, ly, rx - cw / 2, ly + ch, p);
+        p.setStyle(Paint.Style.FILL);
         p.setColor(0xFFFFFFFF);
-        float gh = Ui.dp(getContext(), 14);
-        c.drawRoundRect(l.centerX() - 1.5f, l.centerY() - gh / 2, l.centerX() + 1.5f, l.centerY() + gh / 2, 3, 3, p);
-        c.drawRoundRect(rr.centerX() - 1.5f, rr.centerY() - gh / 2, rr.centerX() + 1.5f, rr.centerY() + gh / 2, 3, 3, p);
         // playhead
         if (head >= start && head <= end) {
             float x = xOf(head);

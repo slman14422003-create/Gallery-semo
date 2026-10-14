@@ -14,7 +14,7 @@ import androidx.media3.transformer.VideoEncoderSettings;
 @OptIn(markerClass = UnstableApi.class)
 final class VideoCompress {
     static final int ORIGINAL = 0, HIGH = 1, BALANCED = 2, SMALL = 3, TINY = 4;
-    static final int DEFAULT = BALANCED;
+    static final int DEFAULT = ORIGINAL;
 
     // short side in pixels (0 = keep), bits per pixel per frame at 30 fps, audio bitrate
     private static final int[] SHORT_SIDE = {0, 1080, 720, 540, 480};

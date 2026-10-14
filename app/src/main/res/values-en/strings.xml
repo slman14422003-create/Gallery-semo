@@ -361,4 +361,6 @@
     <string name="sv_size">Longest side (px)</string>
     <string name="sv_quality">Quality</string>
     <string name="sv_done">Saved: %1$s instead of %2$s</string>
+    <string name="x_retry">Retrying with more compatible settings…</string>
+    <string name="x_reset_tool">Reset</string>
 </resources>
