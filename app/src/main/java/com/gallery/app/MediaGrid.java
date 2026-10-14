@@ -163,17 +163,18 @@ public class MediaGrid extends LinearLayout {
         });
         rv.setLayoutManager(glm);
         rv.setAdapter(ad);
-        rv.setHasFixedSize(false);
-        rv.setItemViewCacheSize(20);
+                rv.setItemViewCacheSize(30);
+        rv.setHasFixedSize(true);
+        rv.setDrawingCacheEnabled(false);
         rv.setClipToPadding(false);
         rv.setPadding(Ui.dp(a, 1), 0, Ui.dp(a, 1), Ui.dp(a, 96));   // bottom room so the last row clears the floating tab bar
         rv.setOverScrollMode(OVER_SCROLL_NEVER);
         rv.getRecycledViewPool().setMaxRecycledViews(1, 60);
         RecyclerView.ItemAnimator ia = rv.getItemAnimator();
         if (ia != null) {
-            ia.setAddDuration(180);
-            ia.setRemoveDuration(140);
-            ia.setMoveDuration(220);
+            ia.setAddDuration(120);
+            ia.setRemoveDuration(100);
+            ia.setMoveDuration(160);
             if (ia instanceof SimpleItemAnimator) ((SimpleItemAnimator) ia).setSupportsChangeAnimations(false);   // no flicker on updates
         }
         final int gap = Math.max(1, Math.round(a.getResources().getDisplayMetrics().density * 0.5f));   // 1dp between tiles

@@ -24,7 +24,7 @@ final class Tile extends FrameLayout {
     Tile(Context c) {
         super(c);
         // iOS Photos grid: square, edge-to-edge, no rounded corners
-        setBackgroundColor(Ui.color(c, R.color.surface_high));
+        setWillNotDraw(true);
 
         thumb = new ImageView(c);
         thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);

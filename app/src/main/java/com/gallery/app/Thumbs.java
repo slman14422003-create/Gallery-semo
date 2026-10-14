@@ -22,7 +22,7 @@ final class Thumbs {
                 .centerCrop()
                 .signature(new ObjectKey(m.modified + ":" + m.size))
                 .placeholder(new ColorDrawable(Ui.color(c, R.color.surface_high)))
-                .transition(BitmapTransitionOptions.withCrossFade(140))
+                .transition(BitmapTransitionOptions.withCrossFade(90))
                 .into(iv);
     }
 

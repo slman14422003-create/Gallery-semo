@@ -91,7 +91,6 @@ public class ViewerActivity extends BaseActivity {
             float s = 1f - 0.05f * d;
             page.setScaleX(s);
             page.setScaleY(s);
-            page.setAlpha(1f - 0.3f * d);
         });
         pager.setPageTransformer(pt);
         View pagerList = pager.getChildAt(0);
