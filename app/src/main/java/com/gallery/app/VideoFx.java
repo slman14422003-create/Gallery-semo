@@ -18,7 +18,7 @@ import androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException
 import androidx.media3.common.audio.BaseAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.effect.OverlayEffect;
-import androidx.media3.effect.OverlaySettings;
+import androidx.media3.common.OverlaySettings;
 import androidx.media3.effect.RgbMatrix;
 import androidx.media3.effect.StaticOverlaySettings;
 import androidx.media3.effect.TextOverlay;
