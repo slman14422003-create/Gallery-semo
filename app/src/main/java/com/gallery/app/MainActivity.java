@@ -37,6 +37,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     // favourite toggled no longer re-filters + re-sorts + re-groups all three tabs in one frame.
     private final int[] filledVersion = {-1, -1, -1};
     private final Runnable syncRun = this::onLibraryChanged;
+    private OnBackPressedCallback backCb;
     /** One shared worker for the update check (a new executor per screen leaked a thread every time). */
     private static final ExecutorService UPDATE_IO = Executors.newSingleThreadExecutor();
 
@@ -89,7 +90,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         nav = NavBar.attach(this, NavBar.PHOTOS, idx -> {
             if (idx == NavBar.SETTINGS) {
                 startActivity(new Intent(this, SettingsActivity.class));
-                overridePendingTransition(R.anim.tab_in, R.anim.tab_out);
+                Motion.legacy(this, R.anim.tab_in, R.anim.tab_out);
             } else {
                 showTab(idx);
             }
@@ -103,21 +104,21 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             });
         }
 
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+        backCb = new OnBackPressedCallback(false) {
             @Override
             public void handleOnBackPressed() {
                 MediaGrid g = tab == NavBar.PHOTOS ? photos : tab == NavBar.SEARCH ? search : null;
                 if (g != null && g.handleBack()) return;
-                if (tab != NavBar.PHOTOS) {
-                    showTab(NavBar.PHOTOS);
-                    return;
-                }
-                finish();
+                if (tab != NavBar.PHOTOS) showTab(NavBar.PHOTOS);
             }
-        });
+        };
+        getOnBackPressedDispatcher().addCallback(this, backCb);
+        photos.setOnSelectChange(this::updateBack);
+        search.setOnSelectChange(this::updateBack);
 
         tab = getIntent().getIntExtra("tab", NavBar.PHOTOS);
         showTab(tab);
+        updateBack();
         Library.watch(this);
         // onStart() (right after this) loads the library and fills the grids once; doing it here too built every grid twice
         if (Store.autoUpdate(this)) Updater.autoCheck(this, UPDATE_IO, ui);
@@ -206,8 +207,15 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             }
             shown = next;
         }
+        updateBack();
         if (old == NavBar.SEARCH && idx != NavBar.SEARCH) hideKeyboard();
         if (idx == NavBar.SEARCH) search.focusSearch2();
+    }
+
+    private void updateBack() {
+        if (backCb == null) return;
+        MediaGrid g = tab == NavBar.PHOTOS ? photos : tab == NavBar.SEARCH ? search : null;
+        backCb.setEnabled(tab != NavBar.PHOTOS || (g != null && g.isSelecting()));
     }
 
     private void hideKeyboard() {

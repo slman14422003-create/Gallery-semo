@@ -21,12 +21,15 @@ public class AlbumActivity extends BaseActivity implements Library.Listener {
         grid.setTitle(name == null ? "" : name);
         grid.setOnBack(this::finish);
         setContentView(grid);
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+        Motion.install(this, R.anim.act_open_enter, R.anim.act_open_exit, R.anim.act_close_enter, R.anim.act_close_exit);
+        final OnBackPressedCallback selBack = new OnBackPressedCallback(false) {
             @Override
             public void handleOnBackPressed() {
-                if (!grid.handleBack()) finish();
+                grid.handleBack();
             }
-        });
+        };
+        getOnBackPressedDispatcher().addCallback(this, selBack);
+        grid.setOnSelectChange(() -> selBack.setEnabled(grid.isSelecting()));
         // the grid is filled in onStart(), which runs right after this
     }
 

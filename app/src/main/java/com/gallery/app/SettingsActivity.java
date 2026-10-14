@@ -6,7 +6,6 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.activity.OnBackPressedCallback;
 
 /** Appearance, language, gallery and player options, access and updates. */
 public class SettingsActivity extends BaseActivity {
@@ -25,12 +24,7 @@ public class SettingsActivity extends BaseActivity {
         content = findViewById(R.id.content);
         Ui.autoGroup(this, content);
         nav = NavBar.attach(this, NavBar.SETTINGS, this::goTab);
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                goTab(NavBar.PHOTOS);
-            }
-        });
+        Motion.install(this, R.anim.tab_in, R.anim.tab_out, R.anim.tab_in, R.anim.tab_out);
     }
 
     private void goTab(int idx) {
@@ -39,7 +33,7 @@ public class SettingsActivity extends BaseActivity {
         i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
         finish();
-        overridePendingTransition(R.anim.tab_in, R.anim.tab_out);
+        Motion.legacy(this, R.anim.tab_in, R.anim.tab_out);
     }
 
     @Override

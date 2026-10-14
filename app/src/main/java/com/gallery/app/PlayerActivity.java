@@ -73,6 +73,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
     private SeekBar seek;
     private ImageButton playBtn, lockFab;
     private SpinnerView spinner;
+    private OnBackPressedCallback lockBack;
     private boolean controlsOn = true, locked = false, dragging = false, playing = false, ended = false;
     private boolean triedFallback = false, userEngine = false;
     private float speed = 1f, zoom = 1f;
@@ -99,6 +100,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Motion.install(this, R.anim.viewer_open_enter, R.anim.hold, R.anim.hold_close, R.anim.viewer_close_exit);
         playlist.clear();
         for (Media m : Library.session) if (m.video) playlist.add(m);
         Media start = Library.session.isEmpty() ? null : Library.session.get(Math.min(Library.sessionIndex, Library.session.size() - 1));
@@ -118,16 +120,13 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
         }
         build();
         subPicker = registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onSubtitlePicked);
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+        lockBack = new OnBackPressedCallback(false) {
             @Override
             public void handleOnBackPressed() {
-                if (locked) {
-                    flashLock();
-                    return;
-                }
-                finish();
+                flashLock();
             }
-        });
+        };
+        getOnBackPressedDispatcher().addCallback(this, lockBack);
         String pref = Store.str(this, "engine", "auto");
         engineKind = "vlc".equals(pref) ? "vlc" : "exo";
         startEngine(engineKind);
@@ -599,6 +598,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
 
     private void setLocked(boolean l) {
         locked = l;
+        if (lockBack != null) lockBack.setEnabled(l);
         if (l) {
             setControls(false);
             lockFab.setVisibility(View.VISIBLE);
@@ -990,7 +990,7 @@ public class PlayerActivity extends BaseActivity implements PlayerEngine.Callbac
             }
         }
         super.finish();
-        overridePendingTransition(R.anim.hold, R.anim.viewer_close_exit);
+        Motion.legacy(this, R.anim.hold_close, R.anim.viewer_close_exit);
     }
 
     @Override

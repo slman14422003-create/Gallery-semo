@@ -62,6 +62,7 @@ public class ViewerActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Motion.install(this, R.anim.viewer_open_enter, R.anim.hold, R.anim.hold_close, R.anim.viewer_close_exit);
         list.addAll(Library.session);
         if (list.isEmpty()) {
             finish();
@@ -221,7 +222,7 @@ public class ViewerActivity extends BaseActivity {
     @Override
     public void finish() {
         super.finish();
-        overridePendingTransition(R.anim.hold, R.anim.viewer_close_exit);
+        Motion.legacy(this, R.anim.hold_close, R.anim.viewer_close_exit);
     }
 
     private Media cur() {

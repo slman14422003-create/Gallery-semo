@@ -78,6 +78,7 @@ public class MediaGrid extends LinearLayout {
     private int cols;
     private String baseTitle = "";
     private Runnable onBack;
+    private Runnable onSelectChange;
     private final List<TextView> chips = new ArrayList<>();
     private boolean built;                       // the list has been filled at least once
     private int rebuildGen;                       // bumps on every rebuild(); a background pass that finishes
@@ -294,6 +295,18 @@ public class MediaGrid extends LinearLayout {
         updateHeader();
     }
 
+    public void setOnSelectChange(Runnable r) {
+        onSelectChange = r;
+    }
+
+    public boolean isSelecting() {
+        return selecting;
+    }
+
+    private void selectChanged() {
+        if (onSelectChange != null) onSelectChange.run();
+    }
+
     public void setOnBack(Runnable r) {
         onBack = r;
         applyMode();
@@ -313,7 +326,10 @@ public class MediaGrid extends LinearLayout {
         Set<String> keys = new LinkedHashSet<>();
         for (Media m : source) keys.add(m.key());
         sel.retainAll(keys);
-        if (sel.isEmpty() && selecting) selecting = false;
+        if (sel.isEmpty() && selecting) {
+            selecting = false;
+            selectChanged();
+        }
         rebuild(built);
     }
 
@@ -565,6 +581,7 @@ public class MediaGrid extends LinearLayout {
 
     private void enterSelect() {
         selecting = true;
+        selectChanged();
         updateHeader();
         ad.notifyItemRangeChanged(0, items.size(), "sel");
     }
@@ -572,6 +589,7 @@ public class MediaGrid extends LinearLayout {
     private void exitSelect() {
         selecting = false;
         sel.clear();
+        selectChanged();
         updateHeader();
         ad.notifyItemRangeChanged(0, items.size(), "sel");
     }
