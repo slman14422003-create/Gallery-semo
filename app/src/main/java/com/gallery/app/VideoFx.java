@@ -18,6 +18,7 @@ import androidx.media3.common.audio.AudioProcessor.UnhandledAudioFormatException
 import androidx.media3.common.audio.BaseAudioProcessor;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.effect.OverlayEffect;
+import androidx.media3.effect.OverlaySettings;
 import androidx.media3.effect.RgbMatrix;
 import androidx.media3.effect.StaticOverlaySettings;
 import androidx.media3.effect.TextOverlay;
@@ -47,19 +48,27 @@ final class VideoFx {
         float y = 0.6f;
         boolean sticker;
         boolean box;
+        int version;
     }
 
     /** The photo editor's colour matrix (filter + light + colour sliders) as one video effect, so photo and video match. */
     static final class Grade implements RgbMatrix {
-        private final float[] m = new float[16];
+        private volatile float[] m;
 
         Grade(ColorMatrix cm) {
+            set(cm);
+        }
+
+        /** Swaps the matrix while the effect stays in the chain, so sliders never rebuild the player pipeline. */
+        void set(ColorMatrix cm) {
             float[] a = cm.getArray();
+            float[] n = new float[16];
             for (int row = 0; row < 3; row++) {
-                for (int col = 0; col < 3; col++) m[col * 4 + row] = a[row * 5 + col];
-                m[12 + row] = a[row * 5 + 4] / 255f;
+                for (int col = 0; col < 3; col++) n[col * 4 + row] = a[row * 5 + col];
+                n[12 + row] = a[row * 5 + 4] / 255f;
             }
-            m[15] = 1f;
+            n[15] = 1f;
+            m = n;
         }
 
         @Override
@@ -140,24 +149,49 @@ final class VideoFx {
 
     // ------------------------------------------------------------------ overlays
 
-    /** Builds one overlay effect for all items. Text size is a fraction of the short side so preview and export match. */
+    /** Text overlay that reads its position live and rebuilds its picture only when the item's look changed. */
+    static final class LiveText extends TextOverlay {
+        private final Overlay o;
+        private final int base;
+        private SpannableString cached;
+        private int ver = -1;
+
+        LiveText(Overlay o, int base) {
+            this.o = o;
+            this.base = base;
+        }
+
+        @Override
+        public SpannableString getText(long presentationTimeUs) {
+            if (cached == null || ver != o.version) {
+                SpannableString s = new SpannableString(o.text);
+                int px = Math.max(12, Math.round(o.size * base));
+                int n = s.length();
+                s.setSpan(new AbsoluteSizeSpan(px, false), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                s.setSpan(new ForegroundColorSpan(o.color), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                if (!o.sticker) s.setSpan(new StyleSpan(Typeface.BOLD), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                if (o.box && !o.sticker) s.setSpan(new BackgroundColorSpan(0xAA000000), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                cached = s;
+                ver = o.version;
+            }
+            return cached;
+        }
+
+        @Override
+        public OverlaySettings getOverlaySettings(long presentationTimeUs) {
+            return new StaticOverlaySettings.Builder()
+                    .setBackgroundFrameAnchor(o.x, o.y)
+                    .setOverlayFrameAnchor(0f, 0f)
+                    .build();
+        }
+    }
+
     static Effect overlays(List<Overlay> items, int frameW, int frameH) {
         int base = Math.max(1, Math.min(frameW, frameH));
         ImmutableList.Builder<TextureOverlay> list = new ImmutableList.Builder<>();
         for (Overlay o : items) {
             if (o.text == null || o.text.isEmpty()) continue;
-            SpannableString s = new SpannableString(o.text);
-            int px = Math.max(12, Math.round(o.size * base));
-            int n = s.length();
-            s.setSpan(new AbsoluteSizeSpan(px, false), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            s.setSpan(new ForegroundColorSpan(o.color), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            if (!o.sticker) s.setSpan(new StyleSpan(Typeface.BOLD), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            if (o.box && !o.sticker) s.setSpan(new BackgroundColorSpan(0xAA000000), 0, n, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            StaticOverlaySettings st = new StaticOverlaySettings.Builder()
-                    .setBackgroundFrameAnchor(o.x, o.y)
-                    .setOverlayFrameAnchor(0f, 0f)
-                    .build();
-            list.add(TextOverlay.createStaticTextOverlay(s, st));
+            list.add(new LiveText(o, base));
         }
         return new OverlayEffect(list.build());
     }

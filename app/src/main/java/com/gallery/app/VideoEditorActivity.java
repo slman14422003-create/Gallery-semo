@@ -93,6 +93,8 @@ public class VideoEditorActivity extends BaseActivity {
     private RulerView filterRuler;
     private final List<LinearLayout> filterCells = new ArrayList<>();
     private final List<LinearLayout> toolItems = new ArrayList<>();
+    private final VideoFx.Grade gradeFx = new VideoFx.Grade(new android.graphics.ColorMatrix());
+    private String lastKey = "";
     private boolean dragging, dragMoved;
     private float dragX, dragY, grabX, grabY;
     private SeekBar sbVolume, sbSize;
@@ -961,7 +963,11 @@ public class VideoEditorActivity extends BaseActivity {
                 }
             }
         }
-        if (grade.toneChanged()) v.add(new VideoFx.Grade(Renderer.matrix(grade)));
+        if (export) {
+            if (grade.toneChanged()) v.add(new VideoFx.Grade(Renderer.matrix(grade)));
+        } else {
+            v.add(gradeFx);
+        }
         if (!overlays.isEmpty()) {
             int[] sz = outSize();
             v.add(VideoFx.overlays(overlays, sz[0], sz[1]));
@@ -983,15 +989,35 @@ public class VideoEditorActivity extends BaseActivity {
         return v;
     }
 
+    private String structKey() {
+        int[] o = outSize();
+        StringBuilder k = new StringBuilder();
+        k.append(rot).append(flipH).append(flipV).append(ratioIdx).append(fit).append(srcW).append('x').append(srcH)
+                .append(o[0]).append('x').append(o[1]).append(fadeInMs).append('/').append(fadeOutMs).append('/').append(trim.start());
+        for (VideoFx.Overlay ov : overlays) k.append(ov.text == null || ov.text.isEmpty() ? '0' : '1');
+        return k.toString();
+    }
+
+    private void refreshFrame() {
+        if (player != null && !player.isPlaying()) player.seekTo(player.getCurrentPosition());
+    }
+
     private void applyEffects() {
         dirty = true;
         updateEstimate();
         boolean odd = rot % 2 == 1;
         float base = srcW > 0 && srcH > 0 ? (odd ? (float) srcH / srcW : (float) srcW / srcH) : 0f;
         frame.setVideoRatio(ratioIdx != 0 ? RATIOS[ratioIdx] : base);
+        gradeFx.set(Renderer.matrix(grade));
+        if (curTab == TAB_TEXT) for (VideoFx.Overlay ov : overlays) ov.version++;
         try {
-            player.setVideoEffects(effects(false));
-            if (!player.isPlaying()) player.seekTo(player.getCurrentPosition());
+            String key = structKey();
+            if (!key.equals(lastKey)) {
+                lastKey = key;
+                player.setVideoEffects(effects(false));
+                ui.postDelayed(this::refreshFrame, 150);
+            }
+            refreshFrame();
         } catch (Throwable t) {
             Toast.makeText(this, getString(R.string.error) + ": " + t.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
         }
