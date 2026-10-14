@@ -992,14 +992,17 @@ public class VideoEditorActivity extends BaseActivity {
     private String structKey() {
         int[] o = outSize();
         StringBuilder k = new StringBuilder();
-        k.append(rot).append(flipH).append(flipV).append(ratioIdx).append(fit).append(srcW).append('x').append(srcH)
+        k.append(grade.toneChanged()).append(rot).append(flipH).append(flipV).append(ratioIdx).append(fit).append(srcW).append('x').append(srcH)
                 .append(o[0]).append('x').append(o[1]).append(fadeInMs).append('/').append(fadeOutMs).append('/').append(trim.start());
         for (VideoFx.Overlay ov : overlays) k.append(ov.text == null || ov.text.isEmpty() ? '0' : '1');
         return k.toString();
     }
 
     private void refreshFrame() {
-        if (player != null && !player.isPlaying()) player.seekTo(player.getCurrentPosition());
+        if (player != null && !player.isPlaying()) {
+            long pos = player.getCurrentPosition();
+            player.seekTo(pos > 0 ? pos - 1 : pos + 1);
+        }
     }
 
     private void applyEffects() {
