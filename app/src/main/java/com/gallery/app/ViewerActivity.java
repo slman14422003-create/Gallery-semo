@@ -262,6 +262,24 @@ public class ViewerActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         if (adapter != null && !list.isEmpty()) updateChrome();
+        resetInteraction();
+    }
+
+    /** After a system dialog (trash request) or the editor, make sure no half-finished animation leaves the screen unresponsive. */
+    private void resetInteraction() {
+        if (pager == null || topBar == null || bottomBar == null) return;
+        pager.animate().cancel();
+        pager.setTranslationX(0f);
+        pager.setTranslationY(0f);
+        pager.setScaleX(1f);
+        pager.setScaleY(1f);
+        topBar.animate().cancel();
+        bottomBar.animate().cancel();
+        topBar.setAlpha(chrome ? 1f : 0f);
+        bottomBar.setAlpha(chrome ? 1f : 0f);
+        topBar.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
+        bottomBar.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
+        for (int i = 0; i < bottomBar.getChildCount(); i++) bottomBar.getChildAt(i).setEnabled(chrome);
     }
 
     @Override
@@ -585,11 +603,15 @@ public class ViewerActivity extends BaseActivity {
                 finish();
                 return;
             }
-            adapter.notifyItemRemoved(idx);
-            current = Math.max(0, Math.min(current, list.size() - 1));
+            current = Math.max(0, Math.min(idx, list.size() - 1));
+            adapter.notifyDataSetChanged();
+            pager.setCurrentItem(current, false);
             updateChrome();
+            resetInteraction();
             pager.post(() -> {
-                if (!isFinishing() && pager.getCurrentItem() != current) pager.setCurrentItem(current, false);
+                if (isFinishing() || isDestroyed()) return;
+                if (pager.getCurrentItem() != current) pager.setCurrentItem(current, false);
+                resetInteraction();
             });
         });
     }

@@ -135,6 +135,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     protected void onStart() {
         super.onStart();
         Library.listen(this);
+        normalizeTabs();
         refreshAccess();
         updateCamFab();
         final String crash = CrashLog.take(this);
@@ -191,6 +192,16 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         ui.removeCallbacks(syncRun);
         Library.unlisten(this);
         super.onDestroy();
+    }
+
+    /** Coming back from the viewer / editor / system dialog: finish any interrupted tab fade so nothing stays invisible or untouchable. */
+    private void normalizeTabs() {
+        if (shown == null) return;
+        for (View v : new View[]{photos, albums, search}) {
+            v.animate().cancel();
+            v.setAlpha(1f);
+            v.setVisibility(v == shown ? View.VISIBLE : View.GONE);
+        }
     }
 
     private View viewFor(int idx) {
