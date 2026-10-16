@@ -359,4 +359,5 @@
 
     <!-- Semo ecosystem -->
     <string name="eco_save_note">حفظ في الملاحظات</string>
+    <string name="eco_open_camera">فتح الكاميرا</string>
 </resources>

@@ -136,6 +136,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         super.onStart();
         Library.listen(this);
         refreshAccess();
+        updateCamFab();
         final String crash = CrashLog.take(this);
         if (crash != null) {
             android.widget.ScrollView sv = new android.widget.ScrollView(this);
@@ -153,6 +154,36 @@ public class MainActivity extends BaseActivity implements Library.Listener {
                     })
                     .setNegativeButton(R.string.close, null).show();
         }
+    }
+
+    private android.widget.ImageButton camFab;
+
+    /** Round camera button (bottom corner) shown only when the Semo Camera app is installed; opens it. */
+    private void updateCamFab() {
+        final Semo.Sibling cam = Semo.byRole(this, Semo.ROLE_CAMERA);
+        if (cam == null) {
+            if (camFab != null) camFab.setVisibility(View.GONE);
+            return;
+        }
+        if (camFab == null) {
+            camFab = new android.widget.ImageButton(this);
+            camFab.setImageResource(R.drawable.ic_camera);
+            camFab.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.color(this, R.color.on_accent)));
+            camFab.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            g.setColor(Ui.color(this, R.color.accent));
+            camFab.setBackground(g);
+            camFab.setElevation(Ui.dp(this, 6));
+            camFab.setContentDescription(getString(R.string.eco_open_camera));
+            Ui.press(this, camFab);
+            camFab.setOnClickListener(v -> Semo.open(this, cam.pkg));
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56),
+                    android.view.Gravity.BOTTOM | android.view.Gravity.END);
+            lp.setMargins(0, 0, Ui.dp(this, 20), Ui.dp(this, 16));
+            stage.addView(camFab, lp);
+        }
+        camFab.setVisibility(View.VISIBLE);
     }
 
     @Override

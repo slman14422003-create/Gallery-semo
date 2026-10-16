@@ -37,6 +37,7 @@ final class Semo {
     static final String ROLE_FILES = "files";
     static final String ROLE_KEYBOARD = "keyboard";
     static final String ROLE_NOTES = "notes";
+    static final String ROLE_CAMERA = "camera";
 
     static final class Sibling {
         String pkg = "";
