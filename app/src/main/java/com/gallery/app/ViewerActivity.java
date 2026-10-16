@@ -588,6 +588,9 @@ public class ViewerActivity extends BaseActivity {
             adapter.notifyItemRemoved(idx);
             current = Math.max(0, Math.min(current, list.size() - 1));
             updateChrome();
+            pager.post(() -> {
+                if (!isFinishing() && pager.getCurrentItem() != current) pager.setCurrentItem(current, false);
+            });
         });
     }
 

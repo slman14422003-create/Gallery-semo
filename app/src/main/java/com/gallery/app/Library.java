@@ -57,10 +57,19 @@ public final class Library {
     }
 
     public static void reload(Context c) {
-        final Context app = c.getApplicationContext();
+        reload(c.getApplicationContext(), 0);
+    }
+
+    private static void reload(final Context app, final int attempt) {
         final int g = GEN.incrementAndGet();
         IO.execute(() -> {
-            List<Media> r = MediaRepo.load(app);
+            final List<Media> r;
+            try {
+                r = MediaRepo.load(app);
+            } catch (Throwable t) {
+                if (g == GEN.get() && attempt < 3) MAIN.postDelayed(() -> reload(app, attempt + 1), 700);
+                return;
+            }
             if (g != GEN.get()) return;
             MAIN.post(() -> {
                 all = r;

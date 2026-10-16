@@ -9,6 +9,8 @@ import com.googlecode.tesseract.android.TessBaseAPI;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 final class TessEngine implements OcrEngine {
     private static final String BASE = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/";
@@ -72,21 +74,16 @@ final class TessEngine implements OcrEngine {
             if (!api.init(root(c).getAbsolutePath(), "ara+eng")) throw new IOException("init");
             api.setVariable("preserve_interword_spaces", "1");
             api.setVariable("user_defined_dpi", "300");
-            OcrResult best = pass(api, img, TessBaseAPI.PageSegMode.PSM_AUTO);
-            if (best.words.size() < 3) {
-                OcrResult sparse = pass(api, img, TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT);
-                if (sparse.words.size() > best.words.size()) best = sparse;
+            List<OcrResult> parts = new ArrayList<>();
+            parts.add(pass(api, img, TessBaseAPI.PageSegMode.PSM_AUTO));
+            parts.add(pass(api, img, TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT));
+            Bitmap inv = OcrPrep.enhance(big, true);
+            try {
+                parts.add(pass(api, inv, TessBaseAPI.PageSegMode.PSM_AUTO));
+            } finally {
+                inv.recycle();
             }
-            if (best.words.size() < 3) {
-                Bitmap inv = OcrPrep.enhance(big, true);
-                try {
-                    OcrResult flipped = pass(api, inv, TessBaseAPI.PageSegMode.PSM_AUTO);
-                    if (flipped.words.size() > best.words.size()) best = flipped;
-                } finally {
-                    inv.recycle();
-                }
-            }
-            return best;
+            return OcrResult.merge(parts);
         } finally {
             api.recycle();
             img.recycle();
@@ -110,7 +107,9 @@ final class TessEngine implements OcrEngine {
             do {
                 String t = it.getUTF8Text(level);
                 Rect r = it.getBoundingRect(level);
-                if (t == null || r == null || t.trim().isEmpty() || it.confidence(level) < 25f) continue;
+                if (t == null || r == null) continue;
+                t = t.trim();
+                if (t.isEmpty() || it.confidence(level) < (t.length() >= 2 ? 15f : 45f)) continue;
                 float cy = (r.top + r.bottom) / 2f;
                 if (lb < 0) {
                     lt = r.top;

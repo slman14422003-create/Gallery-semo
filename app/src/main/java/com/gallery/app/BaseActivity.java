@@ -30,7 +30,9 @@ public abstract class BaseActivity extends AppCompatActivity {
             new ActivityResultContracts.StartIntentSenderForResult(), r -> {
                 Runnable d = pendingDone;
                 pendingDone = null;
-                if (r.getResultCode() == RESULT_OK && d != null) d.run();
+                if (r.getResultCode() != RESULT_OK) return;
+                if (d != null) d.run();
+                else Library.reload(this);
             });
 
     /** iOS "inset grouped" screens (settings, updates) sit on grey in day mode; the window follows so no white strip shows. */

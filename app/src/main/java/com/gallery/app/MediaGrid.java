@@ -427,40 +427,52 @@ public class MediaGrid extends LinearLayout {
 
         BG.execute(() -> {
             List<Media> newShown = new ArrayList<>();
-            for (Media m : srcSnapshot) if (matches(m, f, q)) newShown.add(m);
-            if (byAdded) {
-                Collections.sort(newShown, (a, b) -> Long.compare(Math.max(b.added, 0), Math.max(a.added, 0)));
-            } else {
-                Collections.sort(newShown, (a, b) -> Long.compare(b.date(), a.date()));
-            }
             List<Object> newItems = new ArrayList<>();
-            String last = null;
-            for (Media m : newShown) {
-                if (gm != 0) {
-                    long t = byAdded && m.added > 0 ? m.added * 1000L : m.date();
-                    String h = header(t, gm);
-                    if (!h.equals(last)) {
-                        newItems.add(h);
-                        last = h;
-                    }
-                }
-                newItems.add(m);
-            }
             DiffUtil.DiffResult diffResult = null;
-            if (old != null && !old.isEmpty() && !newItems.isEmpty() && old.size() + newItems.size() < 30000) {
-                diffResult = DiffUtil.calculateDiff(new DiffCb(old, newItems), false);
+            try {
+                for (Media m : srcSnapshot) if (matches(m, f, q)) newShown.add(m);
+                if (byAdded) {
+                    Collections.sort(newShown, (a, b) -> Long.compare(Math.max(b.added, 0), Math.max(a.added, 0)));
+                } else {
+                    Collections.sort(newShown, (a, b) -> Long.compare(b.date(), a.date()));
+                }
+                String last = null;
+                for (Media m : newShown) {
+                    if (gm != 0) {
+                        long t = byAdded && m.added > 0 ? m.added * 1000L : m.date();
+                        String h = header(t, gm);
+                        if (!h.equals(last)) {
+                            newItems.add(h);
+                            last = h;
+                        }
+                    }
+                    newItems.add(m);
+                }
+                if (old != null && !old.isEmpty() && !newItems.isEmpty() && old.size() + newItems.size() < 30000) {
+                    diffResult = DiffUtil.calculateDiff(new DiffCb(old, newItems), false);
+                }
+            } catch (Throwable t) {
+                newShown = new ArrayList<>(srcSnapshot);
+                newItems = new ArrayList<Object>(srcSnapshot);
+                diffResult = null;
             }
+            final List<Media> shownNow = newShown;
+            final List<Object> itemsNow = newItems;
             final DiffUtil.DiffResult finalDiff = diffResult;
             act.runOnUiThread(() -> {
                 if (gen != rebuildGen) return;   // superseded by a newer rebuild; drop this result
                 shown.clear();
-                shown.addAll(newShown);
+                shown.addAll(shownNow);
                 items.clear();
-                items.addAll(newItems);
+                items.addAll(itemsNow);
                 built = true;
                 if (finalDiff != null) {
-                    finalDiff.dispatchUpdatesTo(ad);
-                    refreshMarks();
+                    try {
+                        finalDiff.dispatchUpdatesTo(ad);
+                        refreshMarks();
+                    } catch (RuntimeException e) {
+                        ad.notifyDataSetChanged();
+                    }
                 } else {
                     ad.notifyDataSetChanged();
                 }

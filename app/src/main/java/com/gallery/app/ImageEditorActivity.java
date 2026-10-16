@@ -98,7 +98,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable finalPass = () -> submit(false);
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
-    private final Object lock = new Object();
+    private final java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
     private volatile int gen = 0;
     private Bitmap cropped, draftSrc, draftBmp;
     private float ccl = -1f, cct, ccr, ccb;
@@ -255,7 +255,8 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     // ------------------------------------------------------------------ rendering
 
     private Frame compute(EditState snap, int curTab, boolean draft) {
-        synchronized (lock) {
+        lock.lock();
+        try {
             int key = (snap.rot * 4 + (snap.flipH ? 1 : 0) + (snap.flipV ? 2 : 0)) + 16 * Math.round(snap.angle * 10f);
             if (transformed == null || key != tKey) {
                 transformed = Renderer.transform(preview, snap);
@@ -282,6 +283,8 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             if (!snap.heavy()) return new Frame(base, base, snap.toneChanged() ? Renderer.matrix(snap) : null, false);
             Bitmap src = draft ? draftOf(base) : base;
             return new Frame(Renderer.color(src, snap), base, null, src != base);
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -298,14 +301,18 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
 
     private void rebuild() {
         if (preview == null || ev == null) return;
-        if (st.heavy()) {
+        if (st.heavy() || !lock.tryLock()) {
             rebuildAsync();
             return;
         }
-        gen++;
-        ui.removeCallbacks(finalPass);
-        Frame f = compute(st, tab, false);
-        ev.set(f.shown, st, f.base, f.tone);
+        try {
+            gen++;
+            ui.removeCallbacks(finalPass);
+            Frame f = compute(st, tab, false);
+            ev.set(f.shown, st, f.base, f.tone);
+        } finally {
+            lock.unlock();
+        }
     }
 
     private void rebuildAsync() {

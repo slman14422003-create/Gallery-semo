@@ -39,11 +39,20 @@ final class DismissLayout extends FrameLayout {
     @Override
     public boolean onInterceptTouchEvent(MotionEvent e) {
         switch (e.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_DOWN: {
                 downX = e.getX();
                 downY = e.getY();
                 dragging = false;
+                View t = getChildAt(0);
+                if (t != null && (t.getTranslationY() != 0f || t.getScaleX() != 1f)) {
+                    t.animate().cancel();
+                    t.setTranslationX(0f);
+                    t.setTranslationY(0f);
+                    t.setScaleX(1f);
+                    t.setScaleY(1f);
+                }
                 break;
+            }
             case MotionEvent.ACTION_MOVE:
                 if (dragging) return true;
                 if (e.getPointerCount() > 1 || listener == null) return false;
