@@ -743,18 +743,33 @@ public class MediaGrid extends LinearLayout {
             t.setScaleY(1f);
             t.bind(m, px, Library.isFav(act, m));
             t.setSelection(selecting, sel.contains(m.key()), false);
+            // Resolve the item from the holder's CURRENT position when tapped. A partial ("sel") rebind or a
+            // DiffUtil move keeps this listener while the library reload replaced every Media instance, so a
+            // captured `m` went stale and taps silently did nothing until the whole grid was rebound.
+            final RecyclerView.ViewHolder holder = h;
             t.setOnClickListener(v -> {
-                if (selecting) toggle(m);
-                else open(m);
+                Media cur = mediaAt(holder);
+                if (cur == null) return;
+                if (selecting) toggle(cur);
+                else open(cur);
             });
             t.setOnLongClickListener(v -> {
+                Media cur = mediaAt(holder);
+                if (cur == null) return true;
                 if (!selecting) enterSelect();
-                if (!sel.contains(m.key())) toggle(m);   // long press selects; sliding the finger keeps adding tiles
+                if (!sel.contains(cur.key())) toggle(cur);   // long press selects; sliding the finger keeps adding tiles
                 v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                 dragSelect = true;
-                lastDragPos = items.indexOf(m);
+                lastDragPos = items.indexOf(cur);
                 return true;
             });
+        }
+
+        private Media mediaAt(RecyclerView.ViewHolder h) {
+            int pos = h.getBindingAdapterPosition();
+            if (pos < 0 || pos >= items.size()) return null;
+            Object o = items.get(pos);
+            return o instanceof Media ? (Media) o : null;
         }
 
         @Override
@@ -776,7 +791,13 @@ public class MediaGrid extends LinearLayout {
     }
 
     private void open(Media m) {
-        int idx = shown.indexOf(m);
+        int idx = -1;
+        for (int i = 0; i < shown.size(); i++) {
+            if (shown.get(i).key().equals(m.key())) {
+                idx = i;
+                break;
+            }
+        }
         if (idx < 0) return;
         Actions.openViewer(act, shown, idx);
     }
