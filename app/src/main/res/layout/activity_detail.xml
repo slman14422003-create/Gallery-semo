@@ -26,7 +26,7 @@
                 android:paddingBottom="28dp" />
         </ScrollView>
 
-        <com.camera.app.SpinnerView
+        <com.gallery.app.SpinnerView
             android:id="@+id/loading"
             android:layout_width="26dp"
             android:layout_height="26dp"

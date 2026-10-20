@@ -78,13 +78,24 @@ jobs:
           echo "APP_VERSION_NAME=${TAG#v}" >> "$GITHUB_ENV"
           echo "VERSION_CODE_OVERRIDE=$((10 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
-      - name: Security guard (the camera never touches the network)
+      - name: Security guard (network and file exposure)
         run: |
           SRC=app/src/main/java
+          # 1) network classes may only appear in Net.java (Updater.java only uses its connection type)
+          if grep -rEn "java\.net\.|HttpURLConnection|HttpsURLConnection|okhttp|android\.net\.http|javax\.net|loadUrl\(|DownloadManager" $SRC \
+               | grep -v -E "/(Net|Updater)\.java:"; then
+            echo "::error title=Network guard::network code outside Net.java"; exit 1
+          fi
+          # 2) only the launcher and the "Open with" screen may be exported
           M=app/src/main/AndroidManifest.xml
-          if grep -rEn "java\.net\.|HttpURLConnection|okhttp|android\.net\.http" $SRC; then
-            echo "::error::network code is not allowed in the camera app"; exit 1; fi
-          if grep -q "android.permission.INTERNET" $M; then echo "::error::INTERNET permission is not allowed"; exit 1; fi
+          EXP="$(grep -B1 'android:exported="true"' $M | grep -o 'android:name="[^"]*"' | sort | tr '\n' ' ')"
+          [ "$EXP" = 'android:name=".MainActivity" android:name=".OpenActivity" ' ] || { echo "::error::only MainActivity and OpenActivity may be exported (found: $EXP)"; exit 1; }
+          # the open-with screen must only read the data URI it is opened with (no path/text extras from other apps)
+          for X in OpenActivity; do
+            if grep -n 'getIntent()\.get\(String\|Parcelable\|Serializable\)\|\bin\.get\(String\|Parcelable\|Serializable\)' $SRC/com/gallery/app/$X.java; then
+              echo "::error::$X must not read string/parcelable extras (it is exported)"; exit 1; fi
+          done
+          grep -q 'android:usesCleartextTraffic="false"' $M || { echo "::error::cleartext must stay disabled"; exit 1; }
           grep -q 'android:allowBackup="false"' $M || { echo "::error::backup must stay disabled"; exit 1; }
 
       - uses: actions/setup-java@v4
@@ -95,7 +106,7 @@ jobs:
       - name: Setup Android SDK (API 36)
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-36 build-tools;36.0.0 ndk;28.0.12433566 cmake;3.22.1'
+          packages: 'platforms;android-36 build-tools;36.0.0'
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -116,7 +127,7 @@ jobs:
         run: |
           # accept STORE_PASSWORD too (that is the name used inside signing-info.txt) and fall back to KEY_PASSWORD
           STORE_PASS="${KEYSTORE_PASSWORD:-${STORE_PASSWORD:-$KEY_PASSWORD}}"
-          ALIAS="${KEY_ALIAS:-camera}"
+          ALIAS="${KEY_ALIAS:-gallery}"
           MISSING=""
           [ -z "$KEYSTORE_BASE64" ] && MISSING="$MISSING KEYSTORE_BASE64"
           [ -z "$STORE_PASS" ] && MISSING="$MISSING KEYSTORE_PASSWORD"
@@ -160,12 +171,12 @@ jobs:
         run: |
           APK_SRC="$(ls app/build/outputs/apk/${BUILD_TYPE}/*.apk | head -n1)"
           mkdir -p dist
-          APK="dist/Camera-${TAG}-${BUILD_TYPE}.apk"
+          APK="dist/Gallery-${TAG}-${BUILD_TYPE}.apk"
           cp "$APK_SRC" "$APK"
           APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n1)"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           {
-            echo "## ✅ Camera Studio — $BUILD_TYPE"
+            echo "## ✅ Gallery Studio — $BUILD_TYPE"
             echo ""
             echo "| | |"
             echo "|---|---|"
@@ -177,7 +188,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Camera-${{ env.BUILD_TYPE }}-apk
+          name: Gallery-${{ env.BUILD_TYPE }}-apk
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 30
@@ -187,7 +198,7 @@ jobs:
         if: ${{ env.BUILD_TYPE == 'release' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Camera-r8-mapping
+          name: Gallery-r8-mapping
           path: app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: ignore
           retention-days: 30
@@ -213,7 +224,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: Camera-release-apk
+          name: Gallery-release-apk
           path: dist
 
       - name: Create or update release
