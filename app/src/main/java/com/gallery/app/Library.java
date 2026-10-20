@@ -37,6 +37,8 @@ public final class Library {
     public static int sessionIndex = 0;
     /** The photo or video handed to the editors. */
     public static Media editTarget;
+    /** Set by the editors once an edited copy was saved, so the viewer that opened them can close itself. */
+    public static volatile boolean savedEdit = false;
 
     private static final List<Listener> LISTENERS = new CopyOnWriteArrayList<>();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -78,6 +80,35 @@ public final class Library {
                 for (Listener l : LISTENERS) l.onLibraryChanged();
             });
         });
+    }
+
+    /** Reloads now and once more shortly after: older Android versions index a new file a moment later. */
+    public static void reloadSoon(Context c) {
+        final Context app = c.getApplicationContext();
+        reload(app);
+        MAIN.postDelayed(() -> reload(app), 1200);
+    }
+
+    /**
+     * Drops items from the in-memory library and from the viewer session right away (main thread), so every
+     * screen updates instantly instead of waiting for the MediaStore observer; a real reload follows to confirm.
+     */
+    public static void removeNow(Context c, List<Media> gone) {
+        if (gone == null || gone.isEmpty()) return;
+        final Set<String> keys = new HashSet<>();
+        for (Media m : gone) keys.add(m.key());
+        List<Media> next = new ArrayList<>(all.size());
+        for (Media m : all) if (!keys.contains(m.key())) next.add(m);
+        List<Media> s = new ArrayList<>(session.size());
+        for (Media m : session) if (!keys.contains(m.key())) s.add(m);
+        GEN.incrementAndGet();   // an older reload still running would bring the deleted items back
+        all = next;
+        session = s;
+        sessionIndex = Math.max(0, Math.min(sessionIndex, Math.max(0, session.size() - 1)));
+        version++;
+        for (Listener l : LISTENERS) l.onLibraryChanged();
+        final Context app = c.getApplicationContext();
+        MAIN.postDelayed(() -> reload(app), 500);
     }
 
     /** Reloads automatically when photos are added, edited or deleted by any app. */

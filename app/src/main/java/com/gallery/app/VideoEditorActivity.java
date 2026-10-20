@@ -1257,7 +1257,8 @@ public class VideoEditorActivity extends BaseActivity {
                     MediaSaver.publishVideo(this, tmp);
                     runOnUiThread(() -> {
                         Toast.makeText(this, R.string.saved_copy, Toast.LENGTH_LONG).show();
-                        Library.reload(this);
+                        Library.savedEdit = true;
+                        Library.reloadSoon(this);
                         finish();
                     });
                 } catch (Exception e) {

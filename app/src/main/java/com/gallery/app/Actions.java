@@ -66,6 +66,7 @@ final class Actions {
 
     static void edit(Activity a, Media m) {
         Library.editTarget = m;
+        Library.savedEdit = false;
         a.startActivity(new Intent(a, m.video ? VideoEditorActivity.class : ImageEditorActivity.class));
     }
 }

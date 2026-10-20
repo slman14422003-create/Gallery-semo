@@ -62,6 +62,7 @@ public class ViewerActivity extends BaseActivity {
     private OnBackPressedCallback liveBack;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private boolean slideshow;
+    private boolean editing;   // this viewer opened an editor; close once an edited copy was saved
     private final Runnable slideStep = new Runnable() {
         @Override
         public void run() {
@@ -185,7 +186,10 @@ public class ViewerActivity extends BaseActivity {
                         v -> Actions.share(this, java.util.Collections.singletonList(cur())),
                         v -> toggleFav(),
                         v -> toggleLive(),
-                        v -> Actions.edit(this, cur()),
+                        v -> {
+                            editing = true;
+                            Actions.edit(this, cur());
+                        },
                         v -> InfoSheet.show(this, cur()),
                         v -> deleteCurrent()}, btns);
         favBtn = btns[1];
@@ -261,6 +265,14 @@ public class ViewerActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (editing) {
+            editing = false;
+            if (Library.savedEdit) {
+                Library.savedEdit = false;
+                finish();   // back to the grid so another photo can be opened right away
+                return;
+            }
+        }
         if (adapter != null && !list.isEmpty()) updateChrome();
         resetInteraction();
     }
@@ -594,25 +606,11 @@ public class ViewerActivity extends BaseActivity {
 
     private void deleteCurrent() {
         if (live) exitLive();
+        stopSlideshow();
         final Media m = cur();
         trashOrDelete(java.util.Collections.singletonList(m), () -> {
-            int idx = list.indexOf(m);
-            if (idx < 0) return;
-            list.remove(idx);
-            if (list.isEmpty()) {
-                finish();
-                return;
-            }
-            current = Math.max(0, Math.min(idx, list.size() - 1));
-            adapter.notifyDataSetChanged();
-            pager.setCurrentItem(current, false);
-            updateChrome();
-            resetInteraction();
-            pager.post(() -> {
-                if (isFinishing() || isDestroyed()) return;
-                if (pager.getCurrentItem() != current) pager.setCurrentItem(current, false);
-                resetInteraction();
-            });
+            // the item is already gone from the library (BaseActivity); leave the viewer so the grid is usable at once
+            if (!isFinishing() && !isDestroyed()) finish();
         });
     }
 

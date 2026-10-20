@@ -1112,7 +1112,8 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
                 final MediaSaver.Saved sv = MediaSaver.savePicture(this, result, fmt, q);
                 runOnUiThread(() -> {
                     Toast.makeText(this, getString(R.string.sv_done, Fmt.size(sv.bytes), Fmt.size(media.size)), Toast.LENGTH_LONG).show();
-                    Library.reload(this);
+                    Library.savedEdit = true;
+                    Library.reloadSoon(this);
                     finish();
                 });
             } catch (Throwable e) {

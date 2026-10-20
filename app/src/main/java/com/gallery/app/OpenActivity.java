@@ -21,7 +21,7 @@ public class OpenActivity extends BaseActivity {
         Intent in = getIntent();
         Uri uri = in == null ? null : in.getData();
         String type = in == null ? null : in.getType();
-        if (uri == null) {
+        if (uri == null || !allowed(uri)) {
             finish();
             return;
         }
@@ -52,6 +52,20 @@ public class OpenActivity extends BaseActivity {
         Intent out = new Intent(this, list.get(index).video ? PlayerActivity.class : ViewerActivity.class);
         startActivity(out);
         finish();
+    }
+
+    /** Other apps can send anything here: accept content:// and only public-storage file:// (never this app's private data or other apps' folders). */
+    private boolean allowed(Uri u) {
+        String sc = u.getScheme();
+        if ("content".equals(sc)) return true;
+        if (!"file".equals(sc) || u.getPath() == null) return false;
+        try {
+            String p = new java.io.File(u.getPath()).getCanonicalPath();
+            String root = android.os.Environment.getExternalStorageDirectory().getCanonicalPath() + "/";
+            return p.startsWith(root) && !p.startsWith(root + "Android/data/") && !p.startsWith(root + "Android/obb/");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private String displayName(Uri u) {

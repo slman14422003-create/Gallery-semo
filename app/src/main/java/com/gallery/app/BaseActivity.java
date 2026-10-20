@@ -30,7 +30,11 @@ public abstract class BaseActivity extends AppCompatActivity {
             new ActivityResultContracts.StartIntentSenderForResult(), r -> {
                 Runnable d = pendingDone;
                 pendingDone = null;
-                if (r.getResultCode() != RESULT_OK) return;
+                if (r.getResultCode() != RESULT_OK) {
+                    // cancelled: nothing was deleted by this request, but earlier items of a batch may have been
+                    Library.reload(this);
+                    return;
+                }
                 if (d != null) d.run();
                 else Library.reload(this);
             });
@@ -69,13 +73,14 @@ public abstract class BaseActivity extends AppCompatActivity {
      */
     public void trashOrDelete(final List<Media> items, final Runnable done) {
         if (items == null || items.isEmpty()) return;
+        final List<Media> snapshot = new ArrayList<>(items);
         final List<Uri> uris = new ArrayList<>();
-        for (Media m : items) uris.add(m.uri);
+        for (Media m : snapshot) uris.add(m.uri);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 PendingIntent pi = MediaStore.createTrashRequest(getContentResolver(), uris, true);
                 launchSender(pi.getIntentSender(), () -> {
-                    Library.reload(this);
+                    Library.removeNow(this, snapshot);
                     if (done != null) done.run();
                 });
             } catch (Exception e) {
@@ -84,37 +89,54 @@ public abstract class BaseActivity extends AppCompatActivity {
             return;
         }
         new Dlg(this)
-                .setTitle(getResources().getQuantityString(R.plurals.del_title, items.size(), items.size()))
+                .setTitle(getResources().getQuantityString(R.plurals.del_title, snapshot.size(), snapshot.size()))
                 .setMessage(R.string.del_perm_msg)
-                .setPositiveButton(R.string.delete, (d, w) -> deleteLegacy(new ArrayList<>(uris), done))
+                .setPositiveButton(R.string.delete, (d, w) ->
+                        deleteLegacy(new ArrayList<>(uris), snapshot, new java.util.HashSet<Uri>(), done))
                 .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    private void deleteLegacy(final List<Uri> queue, final Runnable done) {
-        if (queue.isEmpty()) {
-            Library.reload(this);
-            if (done != null) done.run();
-            return;
-        }
-        Uri u = queue.get(0);
-        ContentResolver cr = getContentResolver();
-        try {
-            cr.delete(u, null, null);
-            queue.remove(0);
-            deleteLegacy(queue, done);
-        } catch (SecurityException se) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && se instanceof RecoverableSecurityException) {
-                IntentSender is = ((RecoverableSecurityException) se).getUserAction().getActionIntent().getIntentSender();
-                launchSender(is, () -> {
-                    queue.remove(0);
-                    deleteLegacy(queue, done);
-                });
-            } else {
-                Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
+    /** Deletes on a worker thread (hundreds of files on the UI thread froze the app), asking permission per file when needed. */
+    private void deleteLegacy(final List<Uri> queue, final List<Media> items, final java.util.Set<Uri> deleted, final Runnable done) {
+        final ContentResolver cr = getContentResolver();
+        new Thread(() -> {
+            final List<Uri> rest = new ArrayList<>(queue);
+            boolean failed = false;
+            while (!rest.isEmpty()) {
+                Uri u = rest.get(0);
+                try {
+                    cr.delete(u, null, null);
+                    deleted.add(u);
+                    rest.remove(0);
+                } catch (SecurityException se) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && se instanceof RecoverableSecurityException) {
+                        final IntentSender is = ((RecoverableSecurityException) se).getUserAction().getActionIntent().getIntentSender();
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            launchSender(is, () -> {
+                                deleted.add(rest.remove(0));
+                                deleteLegacy(rest, items, deleted, done);
+                            });
+                        });
+                        return;
+                    }
+                    failed = true;
+                    rest.remove(0);
+                } catch (Exception e) {
+                    failed = true;
+                    rest.remove(0);
+                }
             }
-        } catch (Exception e) {
-            Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
-        }
+            final boolean bad = failed;
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                List<Media> gone = new ArrayList<>();
+                for (Media m : items) if (deleted.contains(m.uri)) gone.add(m);
+                Library.removeNow(this, gone);
+                if (bad) Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
+                if (done != null && !gone.isEmpty()) done.run();
+            });
+        }).start();
     }
 }
