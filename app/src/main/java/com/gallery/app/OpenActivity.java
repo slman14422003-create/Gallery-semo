@@ -50,6 +50,13 @@ public class OpenActivity extends BaseActivity {
         }
         Library.setSession(list, index);
         Intent out = new Intent(this, list.get(index).video ? PlayerActivity.class : ViewerActivity.class);
+        // the sender's temporary read permission belongs to this short-lived screen: hand it on to the player / viewer
+        // (without it every read after this screen closes fails with "Permission Denial")
+        if ("content".equals(uri.getScheme())) {
+            out.setData(uri);
+            out.setClipData(android.content.ClipData.newRawUri("", uri));
+            out.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
         startActivity(out);
         finish();
     }

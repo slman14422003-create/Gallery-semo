@@ -28,3 +28,7 @@ Task: seeking fails on files opened from outside the app (and two different file
 - PlayerActivity: last-resort step of the recovery chain: when every engine fails on the original source,
   copy the file to the cache and retry the whole chain on the copy from the last good position.
 - Cache copy is removed when the file changes and when the player closes. New string preparing_file (ar + en).
+
+Task: files opened from a file manager fail with SecurityException (FileProvider permission denied)
+- OpenActivity: forwards the sender's temporary read grant (data + ClipData + FLAG_GRANT_READ_URI_PERMISSION) to PlayerActivity / ViewerActivity.
+  Cause: the grant belonged to OpenActivity, which closes right away, so later reads (seeking, cache copy, VLC) were denied.
