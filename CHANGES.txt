@@ -1,0 +1,16 @@
+Task log (kept per task so edits are easy to follow)
+
+Task: video player fails on large / old files ("Cannot play this file")
+- PlayerActivity: recovery chain on any playback error, resuming at the last good position:
+  ExoPlayer -> VLC hardware -> VLC software -> one retry 8s further on (damaged stretch) -> dialog.
+  Engine choice in settings is now only the starting engine; a failure always falls back.
+- PlayerActivity: events from a replaced / closed engine are ignored (no duplicate dialogs, no NPE after close).
+- PlayerActivity: error dialog shown once, never on a closing screen, closing it exits the player.
+- PlayerActivity: failed engine reporting position 0 no longer erases the saved resume position.
+- PlayerActivity: every new file starts again with the preferred engine after a fallback.
+- ExoEngine: one automatic re-prepare on a transient decode/IO error before falling back; removed unused field.
+- VlcEngine: software mode drops late frames (no stalls on huge files), 1.5s read-ahead cache,
+  views detached on the UI thread and stop/release on a worker thread, no calls on a released player.
+- Media.resumeKey(): files opened from other apps (no MediaStore id) no longer share one resume slot.
+- Strings: new fallback_sw / recover_skip, updated play_error_msg / set_engine_sub (ar + en).
+Dead code: scan found no unused classes, methods, imports or resources; removed unused fields in the player.
