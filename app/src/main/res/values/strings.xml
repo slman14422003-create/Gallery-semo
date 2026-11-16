@@ -362,4 +362,5 @@
     <string name="eco_open_camera">فتح الكاميرا</string>
     <string name="fallback_sw">تم التبديل إلى فك الترميز البرمجي لإكمال التشغيل</string>
     <string name="recover_skip">تم تجاوز جزء تالف من الملف</string>
+    <string name="preparing_file">جارٍ تجهيز الملف للتشغيل…</string>
 </resources>

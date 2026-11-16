@@ -101,7 +101,8 @@ final class VlcEngine implements PlayerEngine {
             m.release();
             if (play) mp.play();
         } catch (Throwable e) {
-            cb.onError("open");
+            String d = String.valueOf(e.getMessage());
+            cb.onError("open " + e.getClass().getSimpleName() + " " + (d.length() > 60 ? d.substring(0, 60) : d));
         }
     }
 

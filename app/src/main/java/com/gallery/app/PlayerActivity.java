@@ -79,6 +79,10 @@ public class PlayerActivity extends BaseActivity {
     private final java.util.Set<String> tried = new java.util.HashSet<>();
     private long lastPos = 0, recoveredAt = -1;
     private final List<String> errors = new ArrayList<>();
+    // files from other apps (and any file that cannot be read randomly) are copied to the cache so seeking always works
+    private Uri cachedUri;
+    private boolean cacheTried;
+    private int cacheToken;
     private float speed = 1f, zoom = 1f;
     private int aspect = 0;
     private boolean loop = false;
@@ -478,6 +482,7 @@ public class PlayerActivity extends BaseActivity {
         recoveredAt = -1;
         lastPos = 0;
         errors.clear();
+        cacheTried = false;
     }
 
     private void toggleEngine() {
@@ -509,13 +514,114 @@ public class PlayerActivity extends BaseActivity {
         if (!manualEngine && (!preferredKind().equals(engineKind) || ("vlc".equals(engineKind) && vlcHw != hw))) {
             startEngine(preferredKind(), hw);
         }
+        dropCache();
         resetRecovery();
-        openUri(start, true);
+        if (external(m)) cacheAndPlay(m, start, true);
+        else openUri(start, true);
+    }
+
+    private boolean external(Media m) {
+        return m.id <= 0 && m.uri != null && "content".equals(m.uri.getScheme());
+    }
+
+    private Uri sourceUri(Media m) {
+        return cachedUri != null ? cachedUri : m.uri;
+    }
+
+    private void dropCache() {
+        cacheToken++;
+        cachedUri = null;
+        File[] fs = new File(getCacheDir(), "play").listFiles();
+        if (fs != null) for (File f : fs) f.delete();
+    }
+
+    private static boolean seekable(android.content.ContentResolver cr, Uri u) {
+        try (android.os.ParcelFileDescriptor p = cr.openFileDescriptor(u, "r")) {
+            if (p == null) return false;
+            android.system.Os.lseek(p.getFileDescriptor(), 0, android.system.OsConstants.SEEK_END);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private Uri copyToCache(Media m, int token) throws Exception {
+        File dir = new File(getCacheDir(), "play");
+        dir.mkdirs();
+        String nm = m.name == null ? "" : m.name;
+        int dot = nm.lastIndexOf('.');
+        String ext = dot >= 0 && nm.length() - dot <= 6 ? nm.substring(dot).replaceAll("[^A-Za-z0-9.]", "") : "";
+        File f = new File(dir, "cur_" + System.currentTimeMillis() + ext);
+        long size = m.size;
+        if (size <= 0) {
+            try (Cursor c = getContentResolver().query(m.uri, new String[]{OpenableColumns.SIZE}, null, null, null)) {
+                if (c != null && c.moveToFirst() && !c.isNull(0)) size = c.getLong(0);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (size > 0 && dir.getUsableSpace() < size + (64L << 20)) return null;
+        boolean ok = false;
+        try (InputStream in = getContentResolver().openInputStream(m.uri); FileOutputStream out = new FileOutputStream(f)) {
+            if (in == null) return null;
+            byte[] buf = new byte[256 * 1024];
+            long done = 0;
+            int lastPct = -1, n;
+            while ((n = in.read(buf)) > 0) {
+                if (token != cacheToken) return null;
+                out.write(buf, 0, n);
+                done += n;
+                if (size > 0) {
+                    final int pct = (int) (done * 100 / size);
+                    if (pct != lastPct) {
+                        lastPct = pct;
+                        ui.post(() -> {
+                            if (token == cacheToken) hudShow(getString(R.string.preparing_file) + " " + pct + "%");
+                        });
+                    }
+                }
+            }
+            ok = true;
+        } finally {
+            if (!ok) f.delete();
+        }
+        return Uri.fromFile(f);
+    }
+
+    /**
+     * Plays a file that cannot be read randomly from where it is: copies it to the cache first (a seek on such a
+     * source is what failed) and plays the local copy. {@code check}: only copy when the source is not seekable.
+     */
+    private void cacheAndPlay(final Media m, final long start, final boolean check) {
+        spinner.setVisibility(View.VISIBLE);
+        final int token = ++cacheToken;
+        new Thread(() -> {
+            Uri r = null;
+            boolean needed = true;
+            try {
+                if (check && seekable(getContentResolver(), m.uri)) needed = false;
+                else r = copyToCache(m, token);
+            } catch (Throwable ignored) {
+            }
+            final Uri res = r;
+            final boolean copied = needed;
+            ui.post(() -> {
+                if (token != cacheToken || engine == null || isFinishing() || isDestroyed()) return;
+                spinner.setVisibility(View.GONE);
+                if (res != null) cachedUri = res;
+                else if (copied && !check) {
+                    errors.add("cache copy failed");
+                    showPlayError();
+                    return;
+                }
+                engine.open(sourceUri(m), start, true);
+                setPlayingUi(true);
+            });
+        }).start();
     }
 
     private void openUri(long start, boolean play) {
         Media m = playlist.get(idx);
-        engine.open(m.uri, start, play);
+        engine.open(sourceUri(m), start, play);
         setPlayingUi(play);
     }
 
@@ -562,6 +668,17 @@ public class PlayerActivity extends BaseActivity {
         long pos = lastPos > 0 ? lastPos : (engine == null ? 0 : engine.position());
         Media m = playlist.get(idx);
         String next = nextConfig();
+        if (next == null && !cacheTried && cachedUri == null && "content".equals(m.uri.getScheme())) {
+            // every engine failed on the original source: play a local copy of the file instead
+            cacheTried = true;
+            tried.clear();
+            recoveredAt = pos;
+            errors.add("-> cache copy");
+            startEngine(preferredKind(), Store.bool(this, "hw", true));
+            cacheAndPlay(m, pos, false);
+            hudShow(getString(R.string.preparing_file));
+            return;
+        }
         boolean skipped = false;
         if (next == null && !skipTried && pos > 0 && (m.duration <= 0 || pos + 8000 < m.duration)) {
             skipTried = true;
@@ -1120,6 +1237,7 @@ public class PlayerActivity extends BaseActivity {
             engine.release();
             engine = null;
         }
+        dropCache();
         super.onDestroy();
     }
 }

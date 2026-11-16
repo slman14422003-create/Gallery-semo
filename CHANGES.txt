@@ -18,3 +18,13 @@ Dead code: scan found no unused classes, methods, imports or resources; removed 
 Task: file opened from a file manager fails right after seeking
 - PlayerActivity: recovery restarts from the last position that really played (not the seek target the failed engine reports).
 - PlayerActivity: the error dialog now lists every attempt (engine, error code, position) to tell a damaged file from an app bug.
+
+Task: diagnose unreadable file
+- VlcEngine: "open" error now includes the exception type and message (shown in the error dialog).
+
+Task: seeking fails on files opened from outside the app (and two different files, so not damaged files)
+- PlayerActivity: a file from another app (content:// without a MediaStore id) is checked for random access;
+  if the source is not seekable it is copied to cache/play first (progress %, space check) and the local copy is played.
+- PlayerActivity: last-resort step of the recovery chain: when every engine fails on the original source,
+  copy the file to the cache and retry the whole chain on the copy from the last good position.
+- Cache copy is removed when the file changes and when the player closes. New string preparing_file (ar + en).
