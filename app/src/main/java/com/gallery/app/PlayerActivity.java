@@ -78,6 +78,7 @@ public class PlayerActivity extends BaseActivity {
     private boolean vlcHw = true, manualEngine = false, errorShown = false, skipTried = false;
     private final java.util.Set<String> tried = new java.util.HashSet<>();
     private long lastPos = 0, recoveredAt = -1;
+    private final List<String> errors = new ArrayList<>();
     private float speed = 1f, zoom = 1f;
     private int aspect = 0;
     private boolean loop = false;
@@ -419,6 +420,7 @@ public class PlayerActivity extends BaseActivity {
                 post(() -> {
                     if (failed) return;
                     failed = true;
+                    errors.add(configName() + ": " + msg + " @" + Fmt.dur(Math.max(lastPos, engine.position())));
                     handleError();
                 });
             }
@@ -475,6 +477,7 @@ public class PlayerActivity extends BaseActivity {
         errorShown = false;
         recoveredAt = -1;
         lastPos = 0;
+        errors.clear();
     }
 
     private void toggleEngine() {
@@ -555,7 +558,8 @@ public class PlayerActivity extends BaseActivity {
      */
     private void handleError() {
         spinner.setVisibility(View.GONE);
-        long pos = Math.max(lastPos, engine == null ? 0 : engine.position());
+        // resume from where playback last really ran: after a failed seek the engine reports the unreadable target
+        long pos = lastPos > 0 ? lastPos : (engine == null ? 0 : engine.position());
         Media m = playlist.get(idx);
         String next = nextConfig();
         boolean skipped = false;
@@ -582,7 +586,7 @@ public class PlayerActivity extends BaseActivity {
         errorShown = true;
         new Dlg(this)
                 .setTitle(R.string.play_error)
-                .setMessage(R.string.play_error_msg)
+                .setMessage(getString(R.string.play_error_msg) + "\n\n" + android.text.TextUtils.join("\n", errors))
                 .setPositiveButton(R.string.open_with, (d, w) -> openExternal())
                 .setNegativeButton(R.string.close, (d, w) -> finish())
                 .setOnCancelListener(d -> finish())

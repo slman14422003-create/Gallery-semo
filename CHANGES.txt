@@ -14,3 +14,7 @@ Task: video player fails on large / old files ("Cannot play this file")
 - Media.resumeKey(): files opened from other apps (no MediaStore id) no longer share one resume slot.
 - Strings: new fallback_sw / recover_skip, updated play_error_msg / set_engine_sub (ar + en).
 Dead code: scan found no unused classes, methods, imports or resources; removed unused fields in the player.
+
+Task: file opened from a file manager fails right after seeking
+- PlayerActivity: recovery restarts from the last position that really played (not the seek target the failed engine reports).
+- PlayerActivity: the error dialog now lists every attempt (engine, error code, position) to tell a damaged file from an app bug.
