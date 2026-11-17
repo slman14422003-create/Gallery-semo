@@ -52,3 +52,7 @@
 -keep class androidx.media3.exoplayer.video.** { *; }
 -keep class androidx.media3.exoplayer.ExoPlayerImpl { *; }
 -dontwarn androidx.media3.**
+
+# BlurView (vendored module): keep the blur controllers and algorithms
+-keep class eightbitlab.com.blurview.** { *; }
+-dontwarn eightbitlab.com.blurview.**

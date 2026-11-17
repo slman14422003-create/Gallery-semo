@@ -3,6 +3,7 @@ package com.gallery.app;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import eightbitlab.com.blurview.BlurTarget;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -44,6 +45,9 @@ public class ViewerActivity extends BaseActivity {
     private ViewPager2 pager;
     private Adapter adapter;
     private LinearLayout topBar, bottomBar;
+    private View bottomGlass;       // glass panel around bottomBar (fades / hides with it)
+    private View menuGlass;         // glass panel around menu
+    private BlurTarget blurTarget;  // the pager: what every glass panel blurs
     private TextView titleTv, subTv;
     private ImageButton favBtn, liveBtn;
     private boolean chrome = true;
@@ -123,13 +127,13 @@ public class ViewerActivity extends BaseActivity {
             public void onProgress(float p) {
                 if (slideshow) stopSlideshow();
                 topBar.setAlpha(1f - p);
-                bottomBar.setAlpha(1f - p);
+                bottomGlass.setAlpha(1f - p);
             }
 
             @Override
             public void onCancel() {
                 topBar.animate().alpha(chrome ? 1f : 0f).setDuration(200).start();
-                bottomBar.animate().alpha(chrome ? 1f : 0f).setDuration(200).start();
+                bottomGlass.animate().alpha(chrome ? 1f : 0f).setDuration(200).start();
             }
 
             @Override
@@ -137,7 +141,9 @@ public class ViewerActivity extends BaseActivity {
                 finish();
             }
         });
-        root.addView(dismiss, new FrameLayout.LayoutParams(-1, -1));
+        blurTarget = new BlurTarget(this);
+        blurTarget.addView(dismiss, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(blurTarget, new FrameLayout.LayoutParams(-1, -1));
 
         // top: floating back button and a title pill (no full-width bar)
         topBar = new LinearLayout(this);
@@ -145,7 +151,7 @@ public class ViewerActivity extends BaseActivity {
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         ImageButton back = roundButton(R.drawable.ic_back, R.string.back);
         back.setOnClickListener(v -> finish());
-        topBar.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
+        topBar.addView(Glass.wrap(this, blurTarget, back, -1, Glass.OVER_MEDIA), new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setGravity(Gravity.CENTER_VERTICAL);
@@ -169,12 +175,12 @@ public class ViewerActivity extends BaseActivity {
         titles.addView(subTv);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
         tlp.setMarginStart(Ui.dp(this, 8));
-        topBar.addView(titles, tlp);
+        topBar.addView(Glass.wrap(this, blurTarget, titles, Ui.dp(this, 23), Glass.OVER_MEDIA), tlp);
         ImageButton slides = roundButton(R.drawable.ic_play, R.string.slideshow);
         slides.setOnClickListener(v -> startSlideshow());
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46));
         slp.setMarginStart(Ui.dp(this, 8));
-        topBar.addView(slides, slp);
+        topBar.addView(Glass.wrap(this, blurTarget, slides, -1, Glass.OVER_MEDIA), slp);
         root.addView(topBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
         // bottom action pill
@@ -200,21 +206,23 @@ public class ViewerActivity extends BaseActivity {
         });
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         blp.bottomMargin = Ui.dp(this, 16);
-        root.addView(bottomBar, blp);
+        bottomGlass = Glass.wrap(this, blurTarget, bottomBar, -1, Glass.OVER_MEDIA, new FrameLayout.LayoutParams(-2, -2));
+        root.addView(bottomGlass, blp);
 
         rootView = root;
         menu = new LinearLayout(this);
         menu.setOrientation(LinearLayout.HORIZONTAL);
         menu.setGravity(Gravity.CENTER_VERTICAL);
-        menu.setVisibility(View.GONE);
         GradientDrawable mg = new GradientDrawable();
         mg.setCornerRadius(Ui.dp(this, 16));
         mg.setColor(0xF51C1C1E);
         mg.setStroke(Math.max(1, Ui.dp(this, 1) / 2), 0x40FFFFFF);
         menu.setBackground(mg);
-        menu.setElevation(Ui.dp(this, 12));
         menu.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
-        root.addView(menu, new FrameLayout.LayoutParams(-2, Ui.dp(this, 42), Gravity.TOP | Gravity.LEFT));
+        menuGlass = Glass.wrap(this, blurTarget, menu, Ui.dp(this, 16), Glass.OVER_MEDIA, new FrameLayout.LayoutParams(-2, -1));
+        menuGlass.setElevation(Ui.dp(this, 12));
+        menuGlass.setVisibility(View.GONE);
+        root.addView(menuGlass, new FrameLayout.LayoutParams(-2, Ui.dp(this, 42), Gravity.TOP | Gravity.LEFT));
 
         busy = new ProgressBar(this);
         busy.setIndeterminateTintList(ColorStateList.valueOf(0xFFFFFFFF));
@@ -232,9 +240,9 @@ public class ViewerActivity extends BaseActivity {
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
             Insets b = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             topBar.setPadding(Ui.dp(this, 12) + b.left, b.top + Ui.dp(this, 10), Ui.dp(this, 12) + b.right, 0);
-            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bottomBar.getLayoutParams();
+            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bottomGlass.getLayoutParams();
             p.bottomMargin = Ui.dp(this, 16) + b.bottom;
-            bottomBar.setLayoutParams(p);
+            bottomGlass.setLayoutParams(p);
             return insets;
         });
 
@@ -286,11 +294,11 @@ public class ViewerActivity extends BaseActivity {
         pager.setScaleX(1f);
         pager.setScaleY(1f);
         topBar.animate().cancel();
-        bottomBar.animate().cancel();
+        bottomGlass.animate().cancel();
         topBar.setAlpha(chrome ? 1f : 0f);
-        bottomBar.setAlpha(chrome ? 1f : 0f);
+        bottomGlass.setAlpha(chrome ? 1f : 0f);
         topBar.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
-        bottomBar.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
+        bottomGlass.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
         for (int i = 0; i < bottomBar.getChildCount(); i++) bottomBar.getChildAt(i).setEnabled(chrome);
     }
 
@@ -403,7 +411,7 @@ public class ViewerActivity extends BaseActivity {
         liveGen++;
         liveBack.setEnabled(false);
         busy.setVisibility(View.GONE);
-        menu.setVisibility(View.GONE);
+        menuGlass.setVisibility(View.GONE);
         hideDownload();
         if (layer != null) {
             layer.release();
@@ -450,7 +458,7 @@ public class ViewerActivity extends BaseActivity {
 
     private void onSelection(boolean settled) {
         if (layer == null || !layer.hasSelection() || !settled) {
-            menu.setVisibility(View.GONE);
+            menuGlass.setVisibility(View.GONE);
             return;
         }
         menuItems.clear();
@@ -512,8 +520,8 @@ public class ViewerActivity extends BaseActivity {
             menuDivider();
             menuArrow(rtl ? "‹" : "›", 1);
         }
-        menu.setVisibility(View.INVISIBLE);
-        menu.post(this::placeMenu);
+        menuGlass.setVisibility(View.INVISIBLE);
+        menuGlass.post(this::placeMenu);
     }
 
     private void menuArrow(String glyph, final int dir) {
@@ -539,11 +547,11 @@ public class ViewerActivity extends BaseActivity {
     private void placeMenu() {
         android.graphics.RectF b = new android.graphics.RectF();
         if (layer == null || !layer.selectionBounds(b)) {
-            menu.setVisibility(View.GONE);
+            menuGlass.setVisibility(View.GONE);
             return;
         }
-        int mw = menu.getWidth();
-        int mh = menu.getHeight();
+        int mw = menuGlass.getWidth();
+        int mh = menuGlass.getHeight();
         int rw = rootView.getWidth();
         int rh = rootView.getHeight();
         int gap = Ui.dp(this, 22);
@@ -552,17 +560,17 @@ public class ViewerActivity extends BaseActivity {
         float y = b.top - mh - gap;
         if (y < Ui.dp(this, 90)) y = b.bottom + gap + Ui.dp(this, 12);
         y = Math.max(Ui.dp(this, 90), Math.min(rh - mh - Ui.dp(this, 100), y));
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menu.getLayoutParams();
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) menuGlass.getLayoutParams();
         lp.leftMargin = Math.round(x);
         lp.topMargin = Math.round(y);
-        menu.setLayoutParams(lp);
-        menu.setPivotX(mw / 2f);
-        menu.setPivotY(mh);
-        menu.setAlpha(0f);
-        menu.setScaleX(0.88f);
-        menu.setScaleY(0.88f);
-        menu.setVisibility(View.VISIBLE);
-        menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150)
+        menuGlass.setLayoutParams(lp);
+        menuGlass.setPivotX(mw / 2f);
+        menuGlass.setPivotY(mh);
+        menuGlass.setAlpha(0f);
+        menuGlass.setScaleX(0.88f);
+        menuGlass.setScaleY(0.88f);
+        menuGlass.setVisibility(View.VISIBLE);
+        menuGlass.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
     }
 
@@ -636,7 +644,7 @@ public class ViewerActivity extends BaseActivity {
         chrome = !chrome;
         // a hidden bar must stop receiving touches: before, the invisible back button still caught taps in the corner
         fadeChrome(topBar, chrome);
-        fadeChrome(bottomBar, chrome);
+        fadeChrome(bottomGlass, chrome);
         WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         if (chrome) c.show(WindowInsetsCompat.Type.systemBars());

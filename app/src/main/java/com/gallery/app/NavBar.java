@@ -16,18 +16,20 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import eightbitlab.com.blurview.BlurTarget;
+import eightbitlab.com.blurview.BlurView;
+
 /**
  * iOS 26 floating tab bar: a glass capsule with two tabs (Library, Collections) and a separate round
- * search button next to it. The current tab gets a soft capsule highlight and the accent tint. Built once;
- * switching tabs cross-fades the highlight and the tint instead of rebuilding the bar.
- * Settings is no longer a tab: it is the round button in the Collections header.
+ * search button next to it. With a {@link BlurTarget} the bar floats over the content (the photos scroll
+ * underneath and are blurred through the glass); without one (Settings) it is a plain capsule at the bottom.
+ * Settings is not a tab: it is the round button in the Collections header.
  */
 final class NavBar {
     static final int PHOTOS = 0, ALBUMS = 1, SEARCH = 2, SETTINGS = 3;
     private static final int TABS = 2;      // capsule tabs
     private static final int COUNT = 3;     // capsule tabs + search button
     private static final long DURATION = 240;
-    private static final int GLASS_ALPHA = 236;
     private static final ArgbEvaluator ARGB = new ArgbEvaluator();
 
     interface Callback {
@@ -41,7 +43,9 @@ final class NavBar {
 
     private final Activity a;
     private final Callback cb;
-    private final LinearLayout bar;
+    private final BlurTarget target;
+    private LinearLayout bar;
+    private LinearLayout row;
     private final View[] items = new View[COUNT];
     private final ImageView[] icons = new ImageView[COUNT];
     private final TextView[] names = new TextView[TABS];
@@ -49,52 +53,81 @@ final class NavBar {
     private int selected = -1;
     private ValueAnimator anim;
     private Reselect reselect;
+    private boolean overlay;
 
     void setOnReselect(Reselect r) {
         reselect = r;
     }
 
-    private NavBar(Activity a, Callback cb, LinearLayout bar) {
+    private NavBar(Activity a, Callback cb, BlurTarget target) {
         this.a = a;
         this.cb = cb;
-        this.bar = bar;
+        this.target = target;
     }
 
     static NavBar attach(Activity a, int selected, Callback cb) {
+        return attach(a, selected, null, cb);
+    }
+
+    static NavBar attach(Activity a, int selected, BlurTarget target, Callback cb) {
         ViewGroup content = a.findViewById(android.R.id.content);
         View root = content.getChildAt(0);
-        if (!(root instanceof LinearLayout)) return null;
+        boolean over = target != null && root instanceof FrameLayout;
+        if (!over && !(root instanceof LinearLayout)) return null;
 
+        NavBar n = new NavBar(a, cb, over ? target : null);
+        n.overlay = over;
         LinearLayout row = new LinearLayout(a);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_LOCALE);
         row.setClipChildren(false);
         row.setClipToPadding(false);
-
-        LinearLayout bar = new LinearLayout(a);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setBackgroundResource(R.drawable.bg_nav_float);
-        bar.getBackground().mutate().setAlpha(GLASS_ALPHA);   // slightly see-through glass
-        bar.setPadding(Ui.dp(a, 5), Ui.dp(a, 5), Ui.dp(a, 5), Ui.dp(a, 5));
-        bar.setElevation(Ui.dp(a, 10));
-        row.addView(bar, new LinearLayout.LayoutParams(0, Ui.dp(a, 64), 1f));
-
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rlp.setMargins(Ui.dp(a, 20), Ui.dp(a, 6), Ui.dp(a, 20), Ui.dp(a, 10));
-        ((LinearLayout) root).addView(row, rlp);
-
-        NavBar n = new NavBar(a, cb, bar);
-        n.build(row);
+        n.row = row;
+        n.build();
+        if (over) {
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+            lp.setMargins(Ui.dp(a, 20), 0, Ui.dp(a, 20), Ui.dp(a, 10));
+            ((FrameLayout) root).addView(row, lp);
+        } else {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.setMargins(Ui.dp(a, 20), Ui.dp(a, 6), Ui.dp(a, 20), Ui.dp(a, 10));
+            ((LinearLayout) root).addView(row, lp);
+        }
         n.apply(selected, false);
         return n;
     }
 
-    private void build(LinearLayout row) {
+    /** Distance of the bar from the screen bottom (system navigation bar) in the floating layout. */
+    void setInset(int bottomPx) {
+        if (!overlay || row == null) return;
+        ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) row.getLayoutParams();
+        lp.bottomMargin = Ui.dp(a, 10) + bottomPx;
+        row.setLayoutParams(lp);
+    }
+
+    private void build() {
         int[] iconRes = {R.drawable.ic_image, R.drawable.ic_folder, R.drawable.ic_search};
         int[] labelRes = {R.string.nav_library, R.string.nav_collections, R.string.nav_search};
+
+        bar = new LinearLayout(a);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(a, 5), Ui.dp(a, 5), Ui.dp(a, 5), Ui.dp(a, 5));
+
+        FrameLayout capsule;
+        if (target != null) {
+            BlurView g = new BlurView(a);
+            Glass.apply(g, target, -1, Glass.overlay(a));
+            capsule = g;
+        } else {
+            capsule = new FrameLayout(a);
+            capsule.setBackgroundResource(R.drawable.bg_nav_float);
+        }
+        capsule.setElevation(Ui.dp(a, 10));
+        capsule.addView(bar, new FrameLayout.LayoutParams(-1, -1));
+        row.addView(capsule, new LinearLayout.LayoutParams(0, Ui.dp(a, 64), 1f));
+
         for (int i = 0; i < TABS; i++) {
             final int idx = i;
             LinearLayout item = new LinearLayout(a);
@@ -132,9 +165,15 @@ final class NavBar {
         }
 
         // detached round search button
-        FrameLayout circle = new FrameLayout(a);
-        circle.setBackgroundResource(R.drawable.bg_nav_circle);
-        circle.getBackground().mutate().setAlpha(GLASS_ALPHA);
+        FrameLayout circle;
+        if (target != null) {
+            BlurView g = new BlurView(a);
+            Glass.apply(g, target, -1, Glass.overlay(a));
+            circle = g;
+        } else {
+            circle = new FrameLayout(a);
+            circle.setBackgroundResource(R.drawable.bg_nav_circle);
+        }
         circle.setElevation(Ui.dp(a, 10));
         circle.setContentDescription(a.getString(labelRes[SEARCH]));
         ImageView si = new ImageView(a);

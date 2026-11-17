@@ -42,6 +42,7 @@ public class AlbumsView extends LinearLayout {
     private final Adapter ad = new Adapter();
     private final TextView empty;
     private final boolean wide;
+    private ScrollHeader scroller;
 
     public AlbumsView(BaseActivity a) {
         super(a);
@@ -49,8 +50,7 @@ public class AlbumsView extends LinearLayout {
         wide = a.getResources().getConfiguration().screenWidthDp >= 600;
         setOrientation(VERTICAL);
         setBackgroundColor(Ui.color(a, R.color.bg));
-        View header = LayoutInflater.from(a).inflate(R.layout.view_header, this, false);
-        addView(header);
+        final View header = LayoutInflater.from(a).inflate(R.layout.view_header, this, false);
         ((TextView) header.findViewById(R.id.title)).setText(R.string.nav_collections);
         subtitle = header.findViewById(R.id.subtitle);
         header.findViewById(R.id.btnBack).setVisibility(GONE);
@@ -92,6 +92,8 @@ public class AlbumsView extends LinearLayout {
             }
         });
         body.addView(rv, new FrameLayout.LayoutParams(-1, -1));
+        body.addView(header, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));   // scrolls away with the cards
+        scroller = new ScrollHeader(rv, header, Ui.dp(a, 112));
         empty = new TextView(a);
         empty.setText(R.string.empty_library);
         empty.setTextColor(Ui.color(a, R.color.text_secondary));
@@ -100,6 +102,10 @@ public class AlbumsView extends LinearLayout {
         empty.setVisibility(GONE);
         body.addView(empty, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         refresh();
+    }
+
+    public void setBottomInset(int px) {
+        if (scroller != null) scroller.setBottom(Ui.dp(act, 112) + px);
     }
 
     public void scrollToTop() {

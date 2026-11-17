@@ -171,6 +171,13 @@ public class Dlg extends AlertDialog.Builder {
         Context c = d.getContext();
         if (d.getWindow() != null) {
             d.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                // iOS-style alert: the screen behind the dialog is blurred (where the device allows window blur)
+                d.getWindow().addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                WindowManager.LayoutParams wl = d.getWindow().getAttributes();
+                wl.setBlurBehindRadius(Ui.dp(c, 18));
+                d.getWindow().setAttributes(wl);
+            }
         }
         TextView title = d.findViewById(androidx.appcompat.R.id.alertTitle);
         if (title != null) {

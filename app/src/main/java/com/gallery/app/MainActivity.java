@@ -1,6 +1,7 @@
 package com.gallery.app;
 
 import android.content.Intent;
+import android.graphics.Color;
 import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.os.Handler;
@@ -16,7 +17,13 @@ import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.graphics.Insets;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+import eightbitlab.com.blurview.BlurTarget;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +35,9 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     private FrameLayout stage;
     private View permView;
     private NavBar nav;
+    private BlurTarget blurTarget;
+    private int navInset;
+    private FrameLayout.LayoutParams camLp;
     private int tab = NavBar.PHOTOS;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private View shown;   // the tab currently on screen
@@ -68,12 +78,31 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             }
         });
         super.onCreate(savedInstanceState);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        // The page runs edge to edge: the tabs fill the whole screen and the glass tab bar floats over them
+        // (photos scroll underneath it), so there is no separate strip under the bar.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        if (android.os.Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
+        final FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Ui.color(this, R.color.bg));
+        blurTarget = new BlurTarget(this);
+        blurTarget.setBackgroundColor(Ui.color(this, R.color.bg));
         stage = new FrameLayout(this);
-        root.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1f));
+        blurTarget.addView(stage, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(blurTarget, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
+        View contentView = findViewById(android.R.id.content);
+        if (contentView != null) contentView.setTag(R.id.tag_insets, Boolean.TRUE);   // App's generic inset padding skips this screen
+        root.setTag(R.id.tag_insets, Boolean.TRUE);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets sb = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            boolean kb = ime.bottom > sb.bottom;
+            v.setPadding(sb.left, sb.top, sb.right, kb ? ime.bottom : 0);
+            applyNavInset(kb ? 0 : sb.bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
         root.setAlpha(0f);
         root.animate().alpha(1f).setStartDelay(160).setDuration(420).start();
 
@@ -86,7 +115,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         permView = buildPermView();
         stage.addView(permView, new FrameLayout.LayoutParams(-1, -1));
 
-        nav = NavBar.attach(this, NavBar.PHOTOS, idx -> {
+        nav = NavBar.attach(this, NavBar.PHOTOS, blurTarget, idx -> {
             if (idx == NavBar.SETTINGS) {
                 startActivity(new Intent(this, SettingsActivity.class));
                 Motion.legacy(this, R.anim.tab_in, R.anim.tab_out);
@@ -115,6 +144,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         photos.setOnSelectChange(this::updateBack);
         search.setOnSelectChange(this::updateBack);
 
+        applyNavInset(navInset);
         tab = getIntent().getIntExtra("tab", NavBar.PHOTOS);
         showTab(tab);
         updateBack();
@@ -157,6 +187,19 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         }
     }
 
+    /** Space under the floating bar for the system navigation bar: moves the bar and keeps the last row of every list clear of it. */
+    private void applyNavInset(int bottom) {
+        navInset = bottom;
+        if (nav != null) nav.setInset(bottom);
+        if (photos != null) photos.setBottomInset(bottom);
+        if (albums != null) albums.setBottomInset(bottom);
+        if (search != null) search.setBottomInset(bottom);
+        if (camLp != null && camFab != null) {
+            camLp.bottomMargin = Ui.dp(this, 96) + bottom;
+            camFab.setLayoutParams(camLp);
+        }
+    }
+
     private android.widget.ImageButton camFab;
 
     /** Round camera button (bottom corner) shown only when the Semo Camera app is installed; opens it. */
@@ -181,7 +224,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             camFab.setOnClickListener(v -> Semo.open(this, cam.pkg));
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56),
                     android.view.Gravity.BOTTOM | android.view.Gravity.END);
-            lp.setMargins(0, 0, Ui.dp(this, 20), Ui.dp(this, 16));
+            lp.setMargins(0, 0, Ui.dp(this, 20), Ui.dp(this, 96) + navInset);   // above the floating tab bar
+            camLp = lp;
             stage.addView(camFab, lp);
         }
         camFab.setVisibility(View.VISIBLE);

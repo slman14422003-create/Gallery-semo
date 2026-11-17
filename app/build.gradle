@@ -110,6 +110,8 @@ android {
 }
 
 dependencies {
+    // real-time blur for the floating bars and the viewer overlays (BlurView 4.0, vendored in /blurview)
+    implementation project(':blurview')
     // applies src/main/baseline-prof.txt at install time (faster start, smoother first scroll)
     implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
     // Aligns every Kotlin artifact to one version (fixes "Duplicate class kotlin.collections.jdk8...")

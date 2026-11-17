@@ -54,6 +54,8 @@ public class MediaGrid extends LinearLayout {
     private final int mode;
     private final View header;
     private final TextView title, subtitle;
+    private LinearLayout topBlock;
+    private ScrollHeader scroller;
     private final ImageButton btnBack, btnA1, btnA2, btnDel, btnAll;
     private final ImageView headerIcon;
     private final LinearLayout chipRow;
@@ -92,8 +94,11 @@ public class MediaGrid extends LinearLayout {
         setOrientation(VERTICAL);
         setBackgroundColor(Ui.color(a, R.color.bg));
 
+        // header, search box and filter chips form one block that scrolls away together with the photos
+        topBlock = new LinearLayout(a);
+        topBlock.setOrientation(VERTICAL);
         header = LayoutInflater.from(a).inflate(R.layout.view_header, this, false);
-        addView(header);
+        topBlock.addView(header);
         title = header.findViewById(R.id.title);
         subtitle = header.findViewById(R.id.subtitle);
         btnBack = header.findViewById(R.id.btnBack);
@@ -119,7 +124,7 @@ public class MediaGrid extends LinearLayout {
         chipRow.setOrientation(HORIZONTAL);
         chipRow.setPaddingRelative(Ui.dp(a, 16), Ui.dp(a, 6), Ui.dp(a, 16), Ui.dp(a, 10));
         chipScroll.addView(chipRow);
-        addView(chipScroll, new LayoutParams(-1, -2));
+        topBlock.addView(chipScroll, new LinearLayout.LayoutParams(-1, -2));
         int[] names = {R.string.f_all, R.string.f_photos, R.string.f_videos, R.string.f_favorites};
         for (int i = 0; i < names.length; i++) {
             final int idx = i;
@@ -135,7 +140,7 @@ public class MediaGrid extends LinearLayout {
             searchBox.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
             LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
             sp.setMargins(Ui.dp(a, 16), Ui.dp(a, 2), Ui.dp(a, 16), Ui.dp(a, 8));
-            addView(searchBox, indexOfChild(chipScroll), sp);
+            topBlock.addView(searchBox, topBlock.indexOfChild(chipScroll), sp);
             searchBox.addTextChangedListener(new TextWatcher() {
                 @Override public void beforeTextChanged(CharSequence s, int st, int c, int af) { }
                 @Override public void onTextChanged(CharSequence s, int st, int b, int c) { }
@@ -186,6 +191,8 @@ public class MediaGrid extends LinearLayout {
             }
         });
         body.addView(rv, new FrameLayout.LayoutParams(-1, -1));
+        body.addView(topBlock, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        scroller = new ScrollHeader(rv, topBlock, Ui.dp(a, 96));
 
         // pinch to change the column count
         final ScaleGestureDetector sgd = new ScaleGestureDetector(a, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -289,6 +296,11 @@ public class MediaGrid extends LinearLayout {
     }
 
     // ------------------------------------------------------------------ configuration
+
+    /** Space for the system navigation bar under the floating tab bar (the list scrolls beneath the bar). */
+    public void setBottomInset(int px) {
+        if (scroller != null) scroller.setBottom(Ui.dp(act, 96) + px);
+    }
 
     public void setTitle(String t) {
         baseTitle = t;
@@ -545,6 +557,7 @@ public class MediaGrid extends LinearLayout {
     // ------------------------------------------------------------------ header
 
     private void updateHeader() {
+        if (scroller != null) scroller.setPinned(selecting);   // selection actions stay visible
         if (selecting) {
             title.setText(act.getString(R.string.n_selected, sel.size()));
             subtitle.setText("");
