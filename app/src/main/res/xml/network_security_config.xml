@@ -2,8 +2,7 @@
 <network-security-config>
     <!--
       HTTPS only, system certificate authorities only (no user-installed CAs, so a proxy certificate
-      cannot intercept traffic). The app contacts nothing but GitHub, and only for the update check;
-      Net.java enforces the host list in code.
+      cannot intercept traffic). The app contacts GitHub (update check, Net.java), which enforces its host list in code.
     -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
