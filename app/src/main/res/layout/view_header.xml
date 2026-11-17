@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- iOS large-title header: big bold title on the left, round glass buttons on the right -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -16,16 +17,13 @@
         style="@style/IconButton"
         android:layout_marginEnd="8dp"
         android:contentDescription="@string/back"
-        android:src="@drawable/ic_back"
-        android:tint="?attr/cAccent" />
+        android:src="@drawable/ic_back" />
 
     <ImageView
         android:id="@+id/headerIcon"
-        android:layout_width="38dp"
-        android:layout_height="38dp"
-        android:layout_marginEnd="10dp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:importantForAccessibility="no"
-        android:padding="8dp"
         android:visibility="gone" />
 
     <LinearLayout
@@ -46,10 +44,10 @@
             android:maxLines="1"
             android:textAlignment="viewStart"
             android:textColor="?attr/cTextPrimary"
-            android:textSize="28sp"
+            android:textSize="32sp"
             android:textStyle="bold"
-            app:autoSizeMaxTextSize="28sp"
-            app:autoSizeMinTextSize="16sp"
+            app:autoSizeMaxTextSize="32sp"
+            app:autoSizeMinTextSize="18sp"
             app:autoSizeStepGranularity="1sp"
             app:autoSizeTextType="uniform" />
 
@@ -57,35 +55,24 @@
             android:id="@+id/subtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
+            android:ellipsize="middle"
             android:gravity="start"
-            android:maxLines="2"
+            android:singleLine="true"
             android:textAlignment="viewStart"
             android:textColor="?attr/cTextSecondary"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
     <ImageButton
         android:id="@+id/btnA1"
         style="@style/IconButton"
         android:layout_marginStart="8dp"
-        android:tint="?attr/cAccent"
         android:visibility="gone" />
 
     <ImageButton
         android:id="@+id/btnA2"
         style="@style/IconButton"
         android:layout_marginStart="8dp"
-        android:tint="?attr/cAccent"
-        android:visibility="gone" />
-
-    <ImageButton
-        android:id="@+id/btnAi"
-        style="@style/IconButton"
-        android:layout_marginStart="8dp"
-        android:contentDescription="@string/ai_title"
-        android:src="@drawable/ic_ai"
-        android:tint="?attr/cAccent"
         android:visibility="gone" />
 
     <ImageButton
@@ -93,6 +80,5 @@
         style="@style/IconButton"
         android:layout_marginStart="8dp"
         android:contentDescription="@string/refresh"
-        android:src="@drawable/ic_refresh"
-        android:tint="?attr/cAccent" />
+        android:src="@drawable/ic_refresh" />
 </LinearLayout>
