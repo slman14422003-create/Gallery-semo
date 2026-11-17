@@ -3,30 +3,28 @@
     <item android:state_pressed="true">
         <set android:ordering="together">
             <objectAnimator
-                android:duration="90"
-                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:duration="80"
                 android:propertyName="scaleX"
-                android:valueTo="0.96"
+                android:valueTo="0.97"
                 android:valueType="floatType" />
             <objectAnimator
-                android:duration="90"
-                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:duration="80"
                 android:propertyName="scaleY"
-                android:valueTo="0.96"
+                android:valueTo="0.97"
                 android:valueType="floatType" />
         </set>
     </item>
     <item>
         <set android:ordering="together">
             <objectAnimator
-                android:duration="340"
-                android:interpolator="@android:interpolator/overshoot"
+                android:duration="240"
+                android:interpolator="@android:anim/overshoot_interpolator"
                 android:propertyName="scaleX"
                 android:valueTo="1"
                 android:valueType="floatType" />
             <objectAnimator
-                android:duration="340"
-                android:interpolator="@android:interpolator/overshoot"
+                android:duration="240"
+                android:interpolator="@android:anim/overshoot_interpolator"
                 android:propertyName="scaleY"
                 android:valueTo="1"
                 android:valueType="floatType" />
