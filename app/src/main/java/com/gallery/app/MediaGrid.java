@@ -97,6 +97,17 @@ public class MediaGrid extends LinearLayout {
     private int selShownCount = -1;
     private final Runnable autoScroller = this::autoScrollStep;
 
+    // state fields (were missing -> "cannot find symbol" compile errors)
+    private final List<TextView> chips = new ArrayList<>();
+    private int cols = 3;
+    private int filter = 0;                 // 0 all, 1 photos, 2 videos, 3 favourites
+    private String query = "";
+    private String baseTitle = "";
+    private boolean built;
+    private int rebuildGen;
+    private Runnable onBack, onSelectChange;
+    private final Runnable applyQuery = () -> rebuild();
+
     private void autoScrollStep() {
         if (!dragSelect || scrollDir == 0) return;
         rv.scrollBy(0, Math.round(scrollDir * Ui.dp(act, 14)));
