@@ -39,6 +39,13 @@
         <item name="seekBarStyle">@style/IosSeekBar</item>
     </style>
 
+
+    <style name="ViewerTheme" parent="AppTheme">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
+
     <!-- one slider look everywhere (editors, player, settings): thin track, white iOS knob -->
     <style name="IosSeekBar" parent="Widget.AppCompat.SeekBar">
         <item name="android:progressDrawable">@drawable/seek_track</item>

@@ -367,4 +367,6 @@
     <string name="nav_collections">المجموعات</string>
     <string name="sec_pinned">المثبّتة</string>
     <string name="sec_albums">الألبومات</string>
+    <string name="select_items">حدد عناصر</string>
+    <string name="deselect_all">إلغاء تحديد الكل</string>
 </resources>

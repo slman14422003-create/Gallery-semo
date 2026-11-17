@@ -4,6 +4,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
@@ -24,7 +25,9 @@ public class PhotoView extends AppCompatImageView {
     private final Matrix matrix = new Matrix();
     private final float[] vals = new float[9];
     private float baseScale = 1f;
+    private float insTop, insBottom;
     private ValueAnimator zoomAnim;
+    private ValueAnimator insAnim;
     private TapListener tap;
     private OcrLayer layer;
     private boolean layerActive;
@@ -123,6 +126,7 @@ public class PhotoView extends AppCompatImageView {
     /** Back to the fitted, unzoomed state. */
     public void reset() {
         if (zoomAnim != null) zoomAnim.cancel();
+        if (insAnim != null) insAnim.cancel();
         fit();
     }
 
@@ -166,11 +170,50 @@ public class PhotoView extends AppCompatImageView {
         int dw = d.getIntrinsicWidth();
         int dh = d.getIntrinsicHeight();
         if (dw <= 0 || dh <= 0) return;
-        baseScale = Math.min((float) vw / dw, (float) vh / dh);
+        float rh = Math.max(1f, vh - insTop - insBottom);
+        baseScale = Math.min((float) vw / dw, rh / dh);
         matrix.reset();
         matrix.postScale(baseScale, baseScale);
-        matrix.postTranslate((vw - dw * baseScale) / 2f, (vh - dh * baseScale) / 2f);
+        matrix.postTranslate((vw - dw * baseScale) / 2f, insTop + (rh - dh * baseScale) / 2f);
         setImageMatrix(matrix);
+    }
+
+    /** Space kept free above and below the fitted picture (the viewer bars); animates while the picture is not zoomed. */
+    public void setInsets(final float top, final float bottom, boolean animate) {
+        if (insAnim != null) insAnim.cancel();
+        final float fromTop = insTop, fromBottom = insBottom;
+        if (fromTop == top && fromBottom == bottom) return;
+        Drawable d = getDrawable();
+        if (!animate || d == null || getHeight() == 0 || isZoomed()) {
+            insTop = top;
+            insBottom = bottom;
+            if (isZoomed() && d != null && getHeight() > 0) {
+                float rh = Math.max(1f, getHeight() - insTop - insBottom);
+                baseScale = Math.min((float) getWidth() / d.getIntrinsicWidth(), rh / d.getIntrinsicHeight());
+            } else {
+                fit();
+            }
+            return;
+        }
+        insAnim = ValueAnimator.ofFloat(0f, 1f);
+        insAnim.setDuration(260);
+        insAnim.setInterpolator(new DecelerateInterpolator(1.8f));
+        insAnim.addUpdateListener(a -> {
+            float t = (float) a.getAnimatedValue();
+            insTop = fromTop + (top - fromTop) * t;
+            insBottom = fromBottom + (bottom - fromBottom) * t;
+            if (!isZoomed()) fit();
+        });
+        insAnim.start();
+    }
+
+    /** Where the picture is drawn, in this view's own coordinates. */
+    public boolean displayRect(RectF out) {
+        Drawable d = getDrawable();
+        if (d == null || d.getIntrinsicWidth() <= 0) return false;
+        out.set(0, 0, d.getIntrinsicWidth(), d.getIntrinsicHeight());
+        matrix.mapRect(out);
+        return true;
     }
 
     private void fixTranslation() {
@@ -184,8 +227,19 @@ public class PhotoView extends AppCompatImageView {
         float ty = vals[Matrix.MTRANS_Y];
         float vw = getWidth();
         float vh = getHeight();
+        float rh = Math.max(1f, vh - insTop - insBottom);
         float nx = w <= vw ? (vw - w) / 2f : Math.max(vw - w, Math.min(0f, tx));
-        float ny = h <= vh ? (vh - h) / 2f : Math.max(vh - h, Math.min(0f, ty));
+        float ny;
+        if (h <= rh) {
+            ny = insTop + (rh - h) / 2f;
+        } else if (h < vh) {
+            float t = (vh - h) / Math.max(1f, vh - rh);
+            float full = (vh - h) / 2f;
+            float rect = insTop + (rh - h) / 2f;
+            ny = full + (rect - full) * t;
+        } else {
+            ny = Math.max(vh - h, Math.min(0f, ty));
+        }
         matrix.postTranslate(nx - tx, ny - ty);
     }
 

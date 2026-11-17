@@ -66,4 +66,14 @@ public final class Fmt {
         if (t <= 0) return "";
         return new SimpleDateFormat("EEEE d MMMM yyyy · HH:mm", Locale.getDefault()).format(new Date(t));
     }
+
+    public static String dateShort(long t) {
+        if (t <= 0) return "";
+        return new SimpleDateFormat("d MMMM yyyy", Locale.getDefault()).format(new Date(t));
+    }
+
+    public static String time(long t) {
+        if (t <= 0) return "";
+        return java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, Locale.getDefault()).format(new Date(t));
+    }
 }

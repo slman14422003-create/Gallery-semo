@@ -234,4 +234,20 @@ final class NavBar {
             }
         }
     }
+
+    /** Slides the whole bar away (selection mode) or back. */
+    void setHidden(boolean hide) {
+        if (row == null) return;
+        row.animate().cancel();
+        if (hide) {
+            float dist = row.getHeight() + ((ViewGroup.MarginLayoutParams) row.getLayoutParams()).bottomMargin + Ui.dp(a, 8);
+            row.animate().translationY(dist).alpha(0f).setDuration(240)
+                    .setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f))
+                    .withEndAction(() -> row.setVisibility(View.INVISIBLE)).start();
+        } else {
+            row.setVisibility(View.VISIBLE);
+            row.animate().translationY(0f).alpha(1f).setDuration(320)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+        }
+    }
 }

@@ -300,7 +300,13 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     private void updateBack() {
         if (backCb == null) return;
         MediaGrid g = tab == NavBar.PHOTOS ? photos : tab == NavBar.SEARCH ? search : null;
-        backCb.setEnabled(tab != NavBar.PHOTOS || (g != null && g.isSelecting()));
+        boolean sel = g != null && g.isSelecting();
+        backCb.setEnabled(tab != NavBar.PHOTOS || sel);
+        if (nav != null) nav.setHidden(sel);
+        if (camFab != null) {
+            camFab.animate().alpha(sel ? 0f : 1f).setDuration(180).start();
+            camFab.setEnabled(!sel);
+        }
     }
 
     private void hideKeyboard() {

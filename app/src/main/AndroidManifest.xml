@@ -80,6 +80,7 @@
         <activity android:name=".AlbumActivity" android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
         <activity android:name=".ViewerActivity" android:exported="false"
+            android:theme="@style/ViewerTheme"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
         <activity
             android:name=".PlayerActivity"

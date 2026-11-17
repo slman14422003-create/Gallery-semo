@@ -1,23 +1,33 @@
 package com.gallery.app;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import eightbitlab.com.blurview.BlurTarget;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ProgressBar;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,6 +37,8 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.CompositePageTransformer;
 import androidx.viewpager2.widget.MarginPageTransformer;
@@ -36,21 +48,53 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.DownsampleStrategy;
 import com.bumptech.glide.signature.ObjectKey;
 
+import eightbitlab.com.blurview.BlurTarget;
+
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
-/** Full-screen viewer: swipe between photos and videos, pinch and double-tap zoom, quick actions. */
+/**
+ * Full-screen viewer in the iOS Photos style: zoom transition from the tapped tile, flat top bar (back, date and
+ * time, Edit, more), film strip you can scrub, bottom toolbar, tap to hide everything and fade to black,
+ * swipe down to shrink the picture back into its tile.
+ */
 public class ViewerActivity extends BaseActivity {
+    private static final ArgbEvaluator ARGB = new ArgbEvaluator();
+    private static final int TOP_BAR_DP = 52, STRIP_DP = 52, TOOLBAR_DP = 50, STRIP_H_DP = 42, STRIP_NARROW_DP = 16;
+
     private final List<Media> list = new ArrayList<>();
     private ViewPager2 pager;
     private Adapter adapter;
-    private LinearLayout topBar, bottomBar;
-    private View bottomGlass;       // glass panel around bottomBar (fades / hides with it)
-    private View menuGlass;         // glass panel around menu
-    private BlurTarget blurTarget;  // the pager: what every glass panel blurs
+    private View bg;
+    private FrameLayout topBar;
+    private LinearLayout bottomPanel, toolbar;
+    private RecyclerView strip;
+    private LinearLayoutManager stripLm;
+    private FrameLayout heroLayer;
+    private ImageView hero;
+    private FrameLayout.LayoutParams heroLp;
+    private View menuGlass;
+    private BlurTarget blurTarget;
     private TextView titleTv, subTv;
-    private ImageButton favBtn, liveBtn;
+    private ImageButton favBtn, liveBtn, moreBtn;
+    private PopupWindow popup;
+
     private boolean chrome = true;
+    private float chromeP = 1f;     // 0 hidden, 1 shown (tap to toggle)
+    private float openP = 1f;       // backdrop while opening / closing
+    private float barsP = 1f;       // bars while opening / closing
+    private float dismissP = 0f;    // swipe-down progress
+    private ValueAnimator chromeAnim, dismissAnim;
+    private int statusInset, navInset, sideLeft, sideRight, topH, bottomH;
+    private int viewerBg, ink;
+    private boolean stripOn;
+    private boolean stripUser;
+    private int stripSel = -1;
+    private int stripPad;
+    private boolean opening, closing, closedByHero;
+    private int heroPx;
+
     private int current;
     private boolean live;
     private int liveGen;
@@ -79,37 +123,43 @@ public class ViewerActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Motion.install(this, R.anim.viewer_open_enter, R.anim.hold, R.anim.hold_close, R.anim.viewer_close_exit);
         list.addAll(Library.session);
         if (list.isEmpty()) {
             finish();
             return;
         }
+        current = Math.max(0, Math.min(Library.sessionIndex, list.size() - 1));
+        final Rect from = Hero.rect != null && Hero.key != null && Hero.key.equals(list.get(current).key()) ? new Rect(Hero.rect) : null;
+        Hero.rect = null;
+        heroPx = Hero.px;
+        Motion.install(this, from != null ? R.anim.none : R.anim.viewer_open_enter, from != null ? R.anim.none : R.anim.hold,
+                R.anim.hold_close, R.anim.viewer_close_exit);
+
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
 
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
+        viewerBg = Ui.color(this, R.color.bg);
+        ink = Appearance.isNight(this) ? 0xFFFFFFFF : Ui.color(this, R.color.accent);
+        stripOn = list.size() > 1;
+
+        final FrameLayout root = new FrameLayout(this);
         setContentView(root);
         root.setTag(R.id.tag_insets, Boolean.TRUE);
         View content = findViewById(android.R.id.content);
         if (content != null) content.setTag(R.id.tag_insets, Boolean.TRUE);
+        rootView = root;
+
+        bg = new View(this);
+        root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
 
         pager = new ViewPager2(this);
         adapter = new Adapter();
         pager.setAdapter(adapter);
         pager.setOffscreenPageLimit(1);
-        // gap between pages plus a soft depth effect while swiping (neighbours shrink and fade slightly)
         CompositePageTransformer pt = new CompositePageTransformer();
         pt.addTransformer(new MarginPageTransformer(Ui.dp(this, 14)));
-        pt.addTransformer((page, position) -> {
-            float d = Math.min(1f, Math.abs(position));
-            float s = 1f - 0.05f * d;
-            page.setScaleX(s);
-            page.setScaleY(s);
-        });
         pager.setPageTransformer(pt);
         View pagerList = pager.getChildAt(0);
         if (pagerList != null) pagerList.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -118,7 +168,7 @@ public class ViewerActivity extends BaseActivity {
         dismiss.setListener(new DismissLayout.Listener() {
             @Override
             public boolean canDismiss() {
-                if (live) return false;
+                if (live || opening || closing) return false;
                 PhotoView p = currentPhoto();
                 return p == null || !p.isZoomed();
             }
@@ -126,90 +176,36 @@ public class ViewerActivity extends BaseActivity {
             @Override
             public void onProgress(float p) {
                 if (slideshow) stopSlideshow();
-                topBar.setAlpha(1f - p);
-                bottomGlass.setAlpha(1f - p);
+                if (dismissAnim != null) dismissAnim.cancel();
+                dismissP = p;
+                applyChrome();
             }
 
             @Override
             public void onCancel() {
-                topBar.animate().alpha(chrome ? 1f : 0f).setDuration(200).start();
-                bottomGlass.animate().alpha(chrome ? 1f : 0f).setDuration(200).start();
+                animateDismissBack();
             }
 
             @Override
             public void onDismiss() {
-                finish();
+                closeViewer();
             }
         });
         blurTarget = new BlurTarget(this);
         blurTarget.addView(dismiss, new FrameLayout.LayoutParams(-1, -1));
         root.addView(blurTarget, new FrameLayout.LayoutParams(-1, -1));
 
-        // top: floating back button and a title pill (no full-width bar)
-        topBar = new LinearLayout(this);
-        topBar.setOrientation(LinearLayout.HORIZONTAL);
-        topBar.setGravity(Gravity.CENTER_VERTICAL);
-        ImageButton back = roundButton(R.drawable.ic_back, R.string.back);
-        back.setOnClickListener(v -> finish());
-        topBar.addView(Glass.wrap(this, blurTarget, back, -1, Glass.OVER_MEDIA), new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
-        LinearLayout titles = new LinearLayout(this);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setGravity(Gravity.CENTER_VERTICAL);
-        titles.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
-        GradientDrawable tg = new GradientDrawable();
-        tg.setCornerRadius(Ui.dp(this, 23));
-        tg.setColor(0x66000000);
-        titles.setBackground(tg);
-        titleTv = new TextView(this);
-        titleTv.setTextColor(Color.WHITE);
-        titleTv.setTextSize(14.5f);
-        titleTv.setSingleLine(true);
-        titleTv.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        titleTv.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
-        subTv = new TextView(this);
-        subTv.setTextColor(0xBBFFFFFF);
-        subTv.setTextSize(11.5f);
-        subTv.setSingleLine(true);
-        subTv.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
-        titles.addView(titleTv);
-        titles.addView(subTv);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
-        tlp.setMarginStart(Ui.dp(this, 8));
-        topBar.addView(Glass.wrap(this, blurTarget, titles, Ui.dp(this, 23), Glass.OVER_MEDIA), tlp);
-        ImageButton slides = roundButton(R.drawable.ic_play, R.string.slideshow);
-        slides.setOnClickListener(v -> startSlideshow());
-        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46));
-        slp.setMarginStart(Ui.dp(this, 8));
-        topBar.addView(Glass.wrap(this, blurTarget, slides, -1, Glass.OVER_MEDIA), slp);
-        root.addView(topBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        heroLayer = new FrameLayout(this);
+        heroLayer.setVisibility(View.GONE);
+        hero = new ImageView(this);
+        hero.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        heroLp = new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.LEFT);
+        heroLayer.addView(hero, heroLp);
+        root.addView(heroLayer, new FrameLayout.LayoutParams(-1, -1));
 
-        // bottom action pill
-        final ImageButton[] btns = new ImageButton[6];
-        bottomBar = ViewerBar.build(this,
-                new int[]{R.drawable.ic_share, R.drawable.ic_heart, R.drawable.ic_live_text, R.drawable.ic_edit, R.drawable.ic_info, R.drawable.ic_delete},
-                new int[]{R.string.share, R.string.favorite, R.string.live_text, R.string.edit, R.string.info, R.string.delete},
-                new View.OnClickListener[]{
-                        v -> Actions.share(this, java.util.Collections.singletonList(cur())),
-                        v -> toggleFav(),
-                        v -> toggleLive(),
-                        v -> {
-                            editing = true;
-                            Actions.edit(this, cur());
-                        },
-                        v -> InfoSheet.show(this, cur()),
-                        v -> deleteCurrent()}, btns);
-        favBtn = btns[1];
-        liveBtn = btns[2];
-        liveBtn.setOnLongClickListener(v -> {
-            pickEngine();
-            return true;
-        });
-        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        blp.bottomMargin = Ui.dp(this, 16);
-        bottomGlass = Glass.wrap(this, blurTarget, bottomBar, -1, Glass.OVER_MEDIA, new FrameLayout.LayoutParams(-2, -2));
-        root.addView(bottomGlass, blp);
+        buildTopBar(root);
+        buildBottom(root);
 
-        rootView = root;
         menu = new LinearLayout(this);
         menu.setOrientation(LinearLayout.HORIZONTAL);
         menu.setGravity(Gravity.CENTER_VERTICAL);
@@ -225,10 +221,16 @@ public class ViewerActivity extends BaseActivity {
         root.addView(menuGlass, new FrameLayout.LayoutParams(-2, Ui.dp(this, 42), Gravity.TOP | Gravity.LEFT));
 
         busy = new ProgressBar(this);
-        busy.setIndeterminateTintList(ColorStateList.valueOf(0xFFFFFFFF));
+        busy.setIndeterminateTintList(ColorStateList.valueOf(ink));
         busy.setVisibility(View.GONE);
         root.addView(busy, new FrameLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44), Gravity.CENTER));
 
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                closeViewer();
+            }
+        });
         liveBack = new OnBackPressedCallback(false) {
             @Override
             public void handleOnBackPressed() {
@@ -238,11 +240,13 @@ public class ViewerActivity extends BaseActivity {
         getOnBackPressedDispatcher().addCallback(this, liveBack);
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
-            Insets b = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            topBar.setPadding(Ui.dp(this, 12) + b.left, b.top + Ui.dp(this, 10), Ui.dp(this, 12) + b.right, 0);
-            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) bottomGlass.getLayoutParams();
-            p.bottomMargin = Ui.dp(this, 16) + b.bottom;
-            bottomGlass.setLayoutParams(p);
+            Insets sb = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars());
+            Insets cu = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            statusInset = Math.max(sb.top, cu.top);
+            navInset = Math.max(sb.bottom, cu.bottom);
+            sideLeft = Math.max(sb.left, cu.left);
+            sideRight = Math.max(sb.right, cu.right);
+            layoutBars();
             return insets;
         });
 
@@ -252,20 +256,469 @@ public class ViewerActivity extends BaseActivity {
                 if (live && position != current) exitLive();
                 current = position;
                 updateChrome();
+                setStripSelected(position);
+                if (!stripUser) centerStrip(position, true);
             }
         });
-        current = Math.max(0, Math.min(Library.sessionIndex, list.size() - 1));
         pager.setCurrentItem(current, false);
+        stripSel = current;
         updateChrome();
+
+        if (from != null) {
+            opening = true;
+            openP = 0f;
+            barsP = 0f;
+            pager.setAlpha(0f);
+            applyChrome();
+            root.post(() -> startOpen(from));
+        } else {
+            applyChrome();
+        }
     }
+
+    // ------------------------------------------------------------------ building
+
+    private void buildTopBar(FrameLayout root) {
+        topBar = new FrameLayout(this);
+        topBar.setBackgroundColor((viewerBg & 0x00FFFFFF) | 0xF2000000);
+
+        ImageButton back = circleButton(R.drawable.ic_chevron, R.string.back);
+        back.setRotation(180f);
+        back.setOnClickListener(v -> closeViewer());
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.START | Gravity.CENTER_VERTICAL);
+        bp.setMarginStart(Ui.dp(this, 14));
+        topBar.addView(back, bp);
+
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        titles.setGravity(Gravity.CENTER_HORIZONTAL);
+        titleTv = new TextView(this);
+        titleTv.setTextColor(Ui.color(this, R.color.text_primary));
+        titleTv.setTextSize(15f);
+        titleTv.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD));
+        titleTv.setSingleLine(true);
+        titleTv.setGravity(Gravity.CENTER);
+        subTv = new TextView(this);
+        subTv.setTextColor(Ui.color(this, R.color.text_secondary));
+        subTv.setTextSize(12f);
+        subTv.setSingleLine(true);
+        subTv.setGravity(Gravity.CENTER);
+        titles.addView(titleTv);
+        titles.addView(subTv);
+        topBar.addView(titles, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.HORIZONTAL);
+        right.setGravity(Gravity.CENTER_VERTICAL);
+        TextView edit = new TextView(this);
+        edit.setText(R.string.edit);
+        edit.setTextSize(17f);
+        edit.setTextColor(ink);
+        edit.setGravity(Gravity.CENTER);
+        edit.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
+        edit.setContentDescription(getString(R.string.edit));
+        Ui.press(this, edit);
+        edit.setOnClickListener(v -> {
+            if (live) exitLive();
+            editing = true;
+            Actions.edit(this, cur());
+        });
+        right.addView(edit, new LinearLayout.LayoutParams(-2, Ui.dp(this, 40)));
+        final ImageButton more = circleButton(R.drawable.ic_more, R.string.view_options);
+        moreBtn = more;
+        more.setOnClickListener(v -> showMore());
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40));
+        mp.setMarginStart(Ui.dp(this, 2));
+        right.addView(more, mp);
+        FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL);
+        rp.setMarginEnd(Ui.dp(this, 10));
+        topBar.addView(right, rp);
+
+        root.addView(topBar, new FrameLayout.LayoutParams(-1, Ui.dp(this, TOP_BAR_DP), Gravity.TOP));
+    }
+
+    private ImageButton circleButton(int icon, int desc) {
+        ImageButton b = new ImageButton(this);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(ink));
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        b.setBackgroundResource(R.drawable.bg_icon_btn);
+        b.setContentDescription(getString(desc));
+        Ui.press(this, b);
+        return b;
+    }
+
+    private void buildBottom(FrameLayout root) {
+        bottomPanel = new LinearLayout(this);
+        bottomPanel.setOrientation(LinearLayout.VERTICAL);
+        bottomPanel.setBackgroundColor((viewerBg & 0x00FFFFFF) | 0xF2000000);
+
+        strip = new RecyclerView(this);
+        stripLm = new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false);
+        strip.setLayoutManager(stripLm);
+        strip.setAdapter(new StripAdapter());
+        strip.setClipToPadding(false);
+        strip.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        strip.setItemAnimator(null);
+        strip.setHasFixedSize(true);
+        strip.setItemViewCacheSize(10);
+        strip.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int w = r - l;
+            if (w != or - ol && w > 0) {
+                stripPad = Math.max(0, w / 2 - Ui.dp(this, 18));
+                strip.setPadding(stripPad, 0, stripPad, 0);
+                centerStrip(current, false);
+            }
+        });
+        strip.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(RecyclerView rv, int state) {
+                if (state == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    stripUser = true;
+                    if (slideshow) stopSlideshow();
+                } else if (state == RecyclerView.SCROLL_STATE_IDLE && stripUser) {
+                    stripUser = false;
+                    centerStrip(current, true);
+                }
+            }
+
+            @Override
+            public void onScrolled(RecyclerView rv, int dx, int dy) {
+                if (!stripUser) return;
+                View c = rv.findChildViewUnder(rv.getWidth() / 2f, rv.getHeight() / 2f);
+                int pos = c == null ? -1 : rv.getChildAdapterPosition(c);
+                if (pos >= 0 && pos != current) {
+                    rv.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                    pager.setCurrentItem(pos, false);
+                }
+            }
+        });
+        strip.setVisibility(stripOn ? View.VISIBLE : View.GONE);
+        bottomPanel.addView(strip, new LinearLayout.LayoutParams(-1, Ui.dp(this, STRIP_DP)));
+
+        toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
+        toolbar.addView(toolButton(R.drawable.ic_share, R.string.share, v -> Actions.share(this, java.util.Collections.singletonList(cur()))),
+                new LinearLayout.LayoutParams(0, -1, 1f));
+        favBtn = toolButton(R.drawable.ic_heart, R.string.favorite, v -> toggleFav());
+        toolbar.addView(favBtn, new LinearLayout.LayoutParams(0, -1, 1f));
+        toolbar.addView(toolButton(R.drawable.ic_info, R.string.info, v -> InfoSheet.show(this, cur())),
+                new LinearLayout.LayoutParams(0, -1, 1f));
+        toolbar.addView(toolButton(R.drawable.ic_delete, R.string.delete, v -> deleteCurrent()),
+                new LinearLayout.LayoutParams(0, -1, 1f));
+        toolbar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        bottomPanel.addView(toolbar, new LinearLayout.LayoutParams(-1, Ui.dp(this, TOOLBAR_DP)));
+        root.addView(bottomPanel, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+
+        liveBtn = new ImageButton(this);
+        liveBtn.setImageResource(R.drawable.ic_live_text);
+        liveBtn.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+        liveBtn.setScaleType(ImageView.ScaleType.CENTER);
+        GradientDrawable lg = new GradientDrawable();
+        lg.setShape(GradientDrawable.OVAL);
+        lg.setColor(0x80000000);
+        liveBtn.setBackground(lg);
+        liveBtn.setContentDescription(getString(R.string.live_text));
+        Ui.press(this, liveBtn);
+        liveBtn.setOnClickListener(v -> toggleLive());
+        liveBtn.setOnLongClickListener(v -> {
+            pickEngine();
+            return true;
+        });
+        FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.BOTTOM | Gravity.END);
+        ll.setMarginEnd(Ui.dp(this, 14));
+        root.addView(liveBtn, ll);
+    }
+
+    private ImageButton toolButton(int icon, int desc, View.OnClickListener click) {
+        ImageButton b = new ImageButton(this);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(ink));
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        b.setBackground(null);
+        b.setContentDescription(getString(desc));
+        Ui.press(this, b);
+        b.setOnClickListener(click);
+        return b;
+    }
+
+    private void layoutBars() {
+        topH = statusInset + Ui.dp(this, TOP_BAR_DP);
+        FrameLayout.LayoutParams tl = (FrameLayout.LayoutParams) topBar.getLayoutParams();
+        if (tl.height != topH) {
+            tl.height = topH;
+            topBar.setLayoutParams(tl);
+        }
+        topBar.setPadding(sideLeft, statusInset, sideRight, 0);
+        bottomH = navInset + Ui.dp(this, TOOLBAR_DP) + (stripOn ? Ui.dp(this, STRIP_DP) : 0);
+        bottomPanel.setPadding(sideLeft, 0, sideRight, navInset);
+        FrameLayout.LayoutParams ll = (FrameLayout.LayoutParams) liveBtn.getLayoutParams();
+        ll.bottomMargin = bottomH + Ui.dp(this, 12);
+        liveBtn.setLayoutParams(ll);
+        updatePageInsets(false);
+    }
+
+    private int insetTop() {
+        return chrome ? topH : 0;
+    }
+
+    private int insetBottom() {
+        return chrome ? bottomH : 0;
+    }
+
+    private void updatePageInsets(boolean animate) {
+        View rv = pager.getChildAt(0);
+        if (!(rv instanceof RecyclerView)) return;
+        RecyclerView r = (RecyclerView) rv;
+        for (int i = 0; i < r.getChildCount(); i++) {
+            RecyclerView.ViewHolder vh = r.getChildViewHolder(r.getChildAt(i));
+            if (vh instanceof Adapter.VH) ((Adapter.VH) vh).applyInsets(insetTop(), insetBottom(), animate);
+        }
+    }
+
+    // ------------------------------------------------------------------ chrome state
+
+    private void applyChrome() {
+        float barA = chromeP * barsP * (1f - dismissP);
+        topBar.setAlpha(barA);
+        bottomPanel.setAlpha(barA);
+        liveBtn.setAlpha(barA);
+        float shift = (1f - chromeP) * Ui.dp(this, 10);
+        topBar.setTranslationY(-shift);
+        bottomPanel.setTranslationY(shift);
+        bg.setBackgroundColor((Integer) ARGB.evaluate(chromeP, Color.BLACK, viewerBg));
+        bg.setAlpha(openP * (1f - dismissP));
+    }
+
+    private void setBarsVisibility(boolean show) {
+        int v = show ? View.VISIBLE : View.INVISIBLE;
+        topBar.setVisibility(v);
+        bottomPanel.setVisibility(v);
+        liveBtn.setVisibility(list.isEmpty() || cur().video ? View.GONE : v);
+    }
+
+    private void animateDismissBack() {
+        if (dismissAnim != null) dismissAnim.cancel();
+        dismissAnim = ValueAnimator.ofFloat(dismissP, 0f);
+        dismissAnim.setDuration(240);
+        dismissAnim.setInterpolator(new DecelerateInterpolator(1.5f));
+        dismissAnim.addUpdateListener(a -> {
+            dismissP = (float) a.getAnimatedValue();
+            applyChrome();
+        });
+        dismissAnim.start();
+    }
+
+    private void toggleChrome() {
+        if (slideshow) {
+            stopSlideshow();
+            if (!chrome) toggleChrome();
+            return;
+        }
+        setChrome(!chrome);
+    }
+
+    private void setChrome(final boolean show) {
+        if (chromeAnim != null) chromeAnim.cancel();
+        chrome = show;
+        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        if (show) c.show(WindowInsetsCompat.Type.systemBars());
+        else c.hide(WindowInsetsCompat.Type.systemBars());
+        updatePageInsets(true);
+        setBarsVisibility(true);
+        chromeAnim = ValueAnimator.ofFloat(chromeP, show ? 1f : 0f);
+        chromeAnim.setDuration(show ? 240 : 220);
+        chromeAnim.setInterpolator(new DecelerateInterpolator(1.6f));
+        chromeAnim.addUpdateListener(a -> {
+            chromeP = (float) a.getAnimatedValue();
+            applyChrome();
+        });
+        chromeAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(android.animation.Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                if (!cancelled) setBarsVisibility(chrome);
+            }
+        });
+        chromeAnim.start();
+    }
+
+    // ------------------------------------------------------------------ zoom transition
+
+    private void positionHero(RectF r) {
+        heroLp.width = Math.max(1, Math.round(r.width()));
+        heroLp.height = Math.max(1, Math.round(r.height()));
+        heroLp.leftMargin = Math.round(r.left);
+        heroLp.topMargin = Math.round(r.top);
+        hero.setLayoutParams(heroLp);
+    }
+
+    private static RectF lerp(RectF a, RectF b, float t) {
+        return new RectF(a.left + (b.left - a.left) * t, a.top + (b.top - a.top) * t,
+                a.right + (b.right - a.right) * t, a.bottom + (b.bottom - a.bottom) * t);
+    }
+
+    private RectF toRoot(Rect screen) {
+        int[] o = new int[2];
+        rootView.getLocationOnScreen(o);
+        return new RectF(screen.left - o[0], screen.top - o[1], screen.right - o[0], screen.bottom - o[1]);
+    }
+
+    /** Where the current picture sits when fitted between the bars, in root coordinates. */
+    private RectF fitRect(Media m) {
+        float w = rootView.getWidth(), top = insetTop(), h = rootView.getHeight() - insetTop() - insetBottom();
+        if (m.w <= 0 || m.h <= 0 || w <= 0 || h <= 0) return new RectF(0, top, w, top + h);
+        float s = Math.min(w / m.w, h / m.h);
+        float iw = m.w * s, ih = m.h * s;
+        float l = (w - iw) / 2f, t = top + (h - ih) / 2f;
+        return new RectF(l, t, l + iw, t + ih);
+    }
+
+    private void startOpen(Rect fromScreen) {
+        if (isFinishing() || isDestroyed()) return;
+        final RectF a = toRoot(fromScreen);
+        final RectF b = fitRect(cur());
+        Thumbs.load(hero, cur(), heroPx > 0 ? heroPx : 320);
+        positionHero(a);
+        heroLayer.setVisibility(View.VISIBLE);
+        ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
+        va.setDuration(380);
+        va.setInterpolator(new PathInterpolator(0.22f, 1f, 0.36f, 1f));
+        va.addUpdateListener(x -> {
+            float t = (float) x.getAnimatedValue();
+            positionHero(lerp(a, b, t));
+            openP = Math.min(1f, t * 1.4f);
+            barsP = Math.max(0f, Math.min(1f, (t - 0.4f) / 0.6f));
+            applyChrome();
+        });
+        va.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                openP = 1f;
+                barsP = 1f;
+                opening = false;
+                applyChrome();
+                awaitPage(0);
+            }
+        });
+        va.start();
+    }
+
+    /** Waits (briefly) until the pager page has a picture, then crossfades the transition picture away. */
+    private void awaitPage(final int tries) {
+        PhotoView p = currentPhoto();
+        boolean ready = cur().video || (p != null && p.getDrawable() != null);
+        if (!ready && tries < 40) {
+            ui.postDelayed(() -> awaitPage(tries + 1), 16);
+            return;
+        }
+        pager.setAlpha(1f);
+        if (heroLayer.getVisibility() == View.VISIBLE) {
+            hero.animate().alpha(0f).setDuration(140).withEndAction(() -> {
+                heroLayer.setVisibility(View.GONE);
+                hero.setAlpha(1f);
+            }).start();
+        }
+    }
+
+    private RectF screenImageRect(PhotoView p) {
+        RectF r = new RectF();
+        if (p == null || !p.displayRect(r)) return null;
+        int[] o = new int[2];
+        p.getLocationOnScreen(o);
+        float s = pager.getScaleX();
+        return new RectF(o[0] + r.left * s, o[1] + r.top * s, o[0] + r.right * s, o[1] + r.bottom * s);
+    }
+
+    private void closeViewer() {
+        if (closing || opening) return;
+        if (live) exitLive();
+        stopSlideshow();
+        if (popup != null) popup.dismiss();
+        menuGlass.setVisibility(View.GONE);
+        Media m = cur();
+        Rect tile = Hero.locator != null ? Hero.locator.find(m.key()) : null;
+        PhotoView p = currentPhoto();
+        Drawable d = null;
+        RectF start = null;
+        if (tile != null && !m.video && p != null) {
+            if (p.isZoomed()) p.reset();
+            start = screenImageRect(p);
+            d = p.getDrawable();
+        } else if (tile != null && m.video) {
+            RecyclerView rv = (RecyclerView) pager.getChildAt(0);
+            RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(current);
+            if (vh instanceof Adapter.VH) {
+                d = ((Adapter.VH) vh).poster.getDrawable();
+                if (d != null) {
+                    int[] o = new int[2];
+                    ((Adapter.VH) vh).itemView.getLocationOnScreen(o);
+                    start = fitScreenRect(m, o);
+                }
+            }
+        }
+        if (tile == null || start == null || d == null) {
+            closedByHero = false;
+            finish();
+            return;
+        }
+        closing = true;
+        closedByHero = true;
+        final RectF a = toRoot(new Rect(Math.round(start.left), Math.round(start.top), Math.round(start.right), Math.round(start.bottom)));
+        final RectF b = toRoot(tile);
+        Drawable.ConstantState cs = d.getConstantState();
+        hero.setImageDrawable(cs != null ? cs.newDrawable(getResources()) : d);
+        hero.setAlpha(1f);
+        positionHero(a);
+        heroLayer.setVisibility(View.VISIBLE);
+        pager.setAlpha(0f);
+        final float bgStart = openP * (1f - dismissP);
+        final float barsStart = barsP * (1f - dismissP);
+        dismissP = 0f;
+        ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
+        va.setDuration(340);
+        va.setInterpolator(new PathInterpolator(0.3f, 0.9f, 0.3f, 1f));
+        va.addUpdateListener(x -> {
+            float t = (float) x.getAnimatedValue();
+            positionHero(lerp(a, b, t));
+            openP = bgStart * (1f - t);
+            barsP = barsStart * Math.max(0f, 1f - t * 3f);
+            applyChrome();
+        });
+        va.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                finish();
+            }
+        });
+        va.start();
+    }
+
+    private RectF fitScreenRect(Media m, int[] pageOrigin) {
+        RectF r = fitRect(m);
+        float s = pager.getScaleX();
+        return new RectF(pageOrigin[0] + r.left * s, pageOrigin[1] + r.top * s, pageOrigin[0] + r.right * s, pageOrigin[1] + r.bottom * s);
+    }
+
+    // ------------------------------------------------------------------ lifecycle
 
     @Override
     protected void onPostCreate(Bundle b) {
         super.onPostCreate(b);
         try {
             WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-            c.setAppearanceLightStatusBars(false);
-            c.setAppearanceLightNavigationBars(false);
+            boolean light = !Appearance.isNight(this);
+            c.setAppearanceLightStatusBars(light);
+            c.setAppearanceLightNavigationBars(light);
         } catch (Throwable ignored) {
         }
     }
@@ -273,6 +726,7 @@ public class ViewerActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (list.isEmpty()) return;
         if (editing) {
             editing = false;
             if (Library.savedEdit) {
@@ -281,74 +735,197 @@ public class ViewerActivity extends BaseActivity {
                 return;
             }
         }
-        if (adapter != null && !list.isEmpty()) updateChrome();
+        if (adapter != null) updateChrome();
         resetInteraction();
     }
 
     /** After a system dialog (trash request) or the editor, make sure no half-finished animation leaves the screen unresponsive. */
     private void resetInteraction() {
-        if (pager == null || topBar == null || bottomBar == null) return;
+        if (pager == null || topBar == null || opening || closing) return;
         pager.animate().cancel();
         pager.setTranslationX(0f);
         pager.setTranslationY(0f);
         pager.setScaleX(1f);
         pager.setScaleY(1f);
-        topBar.animate().cancel();
-        bottomGlass.animate().cancel();
-        topBar.setAlpha(chrome ? 1f : 0f);
-        bottomGlass.setAlpha(chrome ? 1f : 0f);
-        topBar.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
-        bottomGlass.setVisibility(chrome ? View.VISIBLE : View.INVISIBLE);
-        for (int i = 0; i < bottomBar.getChildCount(); i++) bottomBar.getChildAt(i).setEnabled(chrome);
+        pager.setAlpha(1f);
+        if (dismissAnim != null) dismissAnim.cancel();
+        if (chromeAnim != null) chromeAnim.cancel();
+        dismissP = 0f;
+        openP = 1f;
+        barsP = 1f;
+        chromeP = chrome ? 1f : 0f;
+        applyChrome();
+        setBarsVisibility(chrome);
     }
 
     @Override
     protected void onDestroy() {
         stopSlideshow();
+        if (popup != null) popup.dismiss();
+        Hero.clear();
         super.onDestroy();
     }
 
     @Override
     public void finish() {
+        int cc = closedByHero ? R.anim.none : R.anim.hold_close;
+        int ce = closedByHero ? R.anim.none : R.anim.viewer_close_exit;
+        if (Build.VERSION.SDK_INT >= 34) overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, cc, ce);
         super.finish();
-        Motion.legacy(this, R.anim.hold_close, R.anim.viewer_close_exit);
+        Motion.legacy(this, cc, ce);
     }
 
     private Media cur() {
         return list.get(Math.max(0, Math.min(current, list.size() - 1)));
     }
 
-    private ImageButton roundButton(int icon, int desc) {
-        ImageButton b = new ImageButton(this);
-        b.setImageResource(icon);
-        b.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
-        b.setScaleType(ImageView.ScaleType.CENTER);
-        GradientDrawable g = new GradientDrawable();
-        g.setShape(GradientDrawable.OVAL);
-        g.setColor(0x66000000);
-        b.setBackground(g);
-        b.setContentDescription(getString(desc));
-        Ui.press(this, b);
-        return b;
-    }
-
     private void updateChrome() {
         if (list.isEmpty()) return;
         Media m = cur();
-        titleTv.setText(m.name);
-        StringBuilder sb = new StringBuilder(Fmt.dateLong(m.date()));
-        subTv.setText(sb);
+        long t = m.date();
+        titleTv.setText(Fmt.dateShort(t));
+        subTv.setText(Fmt.time(t));
         boolean fav = Library.isFav(this, m);
-        liveBtn.setVisibility(m.video ? View.GONE : View.VISIBLE);
+        liveBtn.setVisibility(m.video ? View.GONE : (chrome ? View.VISIBLE : View.INVISIBLE));
         favBtn.setImageResource(fav ? R.drawable.ic_heart_fill : R.drawable.ic_heart);
-        favBtn.setImageTintList(ColorStateList.valueOf(fav ? 0xFFFF5C77 : 0xFFFFFFFF));
     }
 
     private void toggleFav() {
         boolean now = Library.toggleFav(this, cur());
         updateChrome();
+        favBtn.animate().cancel();
+        favBtn.setScaleX(0.7f);
+        favBtn.setScaleY(0.7f);
+        favBtn.animate().scaleX(1f).scaleY(1f).setDuration(320).setInterpolator(new OvershootInterpolator(3f)).start();
+        favBtn.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
         Toast.makeText(this, now ? R.string.fav_added : R.string.fav_removed, Toast.LENGTH_SHORT).show();
     }
+
+    // ------------------------------------------------------------------ film strip
+
+    private int selWidth(int pos) {
+        Media m = list.get(pos);
+        float aspect = m.w > 0 && m.h > 0 ? (float) m.w / m.h : 0.75f;
+        int w = Math.round(Ui.dp(this, STRIP_H_DP) * aspect);
+        return Math.max(Ui.dp(this, 26), Math.min(Ui.dp(this, 64), w));
+    }
+
+    private void setStripSelected(int pos) {
+        if (!stripOn || stripSel == pos) return;
+        int old = stripSel;
+        stripSel = pos;
+        resizeStripItem(old, false);
+        resizeStripItem(pos, true);
+    }
+
+    private void resizeStripItem(final int pos, boolean grow) {
+        if (pos < 0 || pos >= list.size()) return;
+        RecyclerView.ViewHolder vh = strip.findViewHolderForAdapterPosition(pos);
+        if (vh == null) return;
+        final View v = vh.itemView;
+        int from = v.getLayoutParams().width;
+        int to = grow ? selWidth(pos) : Ui.dp(this, STRIP_NARROW_DP);
+        if (from == to) return;
+        ValueAnimator a = ValueAnimator.ofInt(from, to);
+        a.setDuration(220);
+        a.setInterpolator(new DecelerateInterpolator(1.4f));
+        a.addUpdateListener(x -> {
+            ViewGroup.LayoutParams lp = v.getLayoutParams();
+            lp.width = (int) x.getAnimatedValue();
+            v.setLayoutParams(lp);
+        });
+        a.start();
+    }
+
+    private void centerStrip(int pos, boolean smooth) {
+        if (!stripOn || strip == null || strip.getWidth() == 0 || pos < 0 || pos >= list.size()) return;
+        int first = stripLm.findFirstVisibleItemPosition();
+        int last = stripLm.findLastVisibleItemPosition();
+        boolean far = first < 0 || pos < first - 10 || pos > last + 10;
+        if (!smooth || far) {
+            int off = strip.getWidth() / 2 - selWidth(pos) / 2 - stripPad;
+            stripLm.scrollToPositionWithOffset(pos, off);
+            return;
+        }
+        LinearSmoothScroller s = new LinearSmoothScroller(this) {
+            @Override
+            public int calculateDtToFit(int viewStart, int viewEnd, int boxStart, int boxEnd, int snapPreference) {
+                return (boxStart + (boxEnd - boxStart) / 2) - (viewStart + (viewEnd - viewStart) / 2);
+            }
+
+            @Override
+            protected float calculateSpeedPerPixel(DisplayMetrics dm) {
+                return 18f / dm.densityDpi;
+            }
+
+            @Override
+            protected int calculateTimeForScrolling(int dx) {
+                return Math.min(320, super.calculateTimeForScrolling(dx));
+            }
+        };
+        s.setTargetPosition(pos);
+        stripLm.startSmoothScroll(s);
+    }
+
+    private final class StripAdapter extends RecyclerView.Adapter<StripAdapter.VH> {
+        final class VH extends RecyclerView.ViewHolder {
+            final ImageView iv;
+
+            VH(ImageView v) {
+                super(v);
+                iv = v;
+            }
+        }
+
+        @Override
+        public int getItemCount() {
+            return list.size();
+        }
+
+        @Override
+        public VH onCreateViewHolder(ViewGroup parent, int type) {
+            ImageView iv = new ImageView(parent.getContext());
+            iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(Ui.dp(parent.getContext(), STRIP_NARROW_DP), Ui.dp(parent.getContext(), STRIP_H_DP));
+            lp.setMargins(Ui.dp(parent.getContext(), 1), Ui.dp(parent.getContext(), 5), Ui.dp(parent.getContext(), 1), Ui.dp(parent.getContext(), 5));
+            iv.setLayoutParams(lp);
+            return new VH(iv);
+        }
+
+        @Override
+        public void onBindViewHolder(VH h, int pos) {
+            ViewGroup.LayoutParams lp = h.itemView.getLayoutParams();
+            lp.width = pos == stripSel ? selWidth(pos) : Ui.dp(ViewerActivity.this, STRIP_NARROW_DP);
+            h.itemView.setLayoutParams(lp);
+            Thumbs.load(h.iv, list.get(pos), Ui.dp(ViewerActivity.this, 64));
+            h.itemView.setOnClickListener(v -> {
+                int p = h.getBindingAdapterPosition();
+                if (p < 0 || p == current) return;
+                if (slideshow) stopSlideshow();
+                pager.setCurrentItem(p, false);
+            });
+        }
+
+        @Override
+        public void onViewRecycled(VH h) {
+            Thumbs.clear(h.iv);
+        }
+    }
+
+    // ------------------------------------------------------------------ more menu
+
+    private void showMore() {
+        if (popup != null && popup.isShowing()) {
+            popup.dismiss();
+            return;
+        }
+        List<IosMenu.Item> items = new ArrayList<>();
+        if (!cur().video) items.add(new IosMenu.Item(R.string.live_text, R.drawable.ic_live_text, false, this::toggleLive));
+        if (list.size() > 1) items.add(new IosMenu.Item(R.string.slideshow, R.drawable.ic_play, false, this::startSlideshow));
+        popup = IosMenu.show(this, moreBtn, items);
+    }
+
+    // ------------------------------------------------------------------ live text
 
     private PhotoView currentPhoto() {
         View rv = pager.getChildAt(0);
@@ -618,6 +1195,7 @@ public class ViewerActivity extends BaseActivity {
         final Media m = cur();
         trashOrDelete(java.util.Collections.singletonList(m), () -> {
             // the item is already gone from the library (BaseActivity); leave the viewer so the grid is usable at once
+            closedByHero = false;
             if (!isFinishing() && !isDestroyed()) finish();
         });
     }
@@ -635,36 +1213,6 @@ public class ViewerActivity extends BaseActivity {
         ui.removeCallbacks(slideStep);
     }
 
-    private void toggleChrome() {
-        if (slideshow) {
-            stopSlideshow();
-            if (!chrome) toggleChrome();
-            return;
-        }
-        chrome = !chrome;
-        // a hidden bar must stop receiving touches: before, the invisible back button still caught taps in the corner
-        fadeChrome(topBar, chrome);
-        fadeChrome(bottomGlass, chrome);
-        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-        if (chrome) c.show(WindowInsetsCompat.Type.systemBars());
-        else c.hide(WindowInsetsCompat.Type.systemBars());
-        for (int i = 0; i < bottomBar.getChildCount(); i++) bottomBar.getChildAt(i).setEnabled(chrome);
-    }
-
-    private void fadeChrome(final View v, final boolean show) {
-        v.animate().cancel();
-        if (show) {
-            v.setVisibility(View.VISIBLE);
-            v.animate().alpha(1f).setDuration(180).withLayer().start();
-        } else {
-            v.animate().alpha(0f).setDuration(160).withLayer()
-                    .withEndAction(() -> {
-                        if (!chrome) v.setVisibility(View.INVISIBLE);
-                    }).start();
-        }
-    }
-
     // ------------------------------------------------------------------ pages
 
     private final class Adapter extends RecyclerView.Adapter<Adapter.VH> {
@@ -678,6 +1226,11 @@ public class ViewerActivity extends BaseActivity {
                 photo = p;
                 poster = post;
                 play = pl;
+            }
+
+            void applyInsets(int top, int bottom, boolean animate) {
+                photo.setInsets(top, bottom, animate);
+                poster.setPadding(0, top, 0, bottom);
             }
         }
 
@@ -715,6 +1268,7 @@ public class ViewerActivity extends BaseActivity {
             Glide.with(h.itemView).clear(h.photo);
             Glide.with(h.itemView).clear(h.poster);
             h.photo.setTapListener(ViewerActivity.this::toggleChrome);
+            h.applyInsets(insetTop(), insetBottom(), false);
             if (m.video) {
                 h.photo.setVisibility(View.GONE);
                 h.poster.setVisibility(View.VISIBLE);
@@ -728,7 +1282,7 @@ public class ViewerActivity extends BaseActivity {
                 h.play.setVisibility(View.GONE);
                 h.photo.setVisibility(View.VISIBLE);
                 Glide.with(h.itemView).load(m.uri)
-                        .override(2560, 2560)
+                        .override(2048, 2048)
                         .downsample(DownsampleStrategy.AT_MOST)
                         .signature(new ObjectKey(m.modified + ":" + m.size))
                         .thumbnail(0.2f)

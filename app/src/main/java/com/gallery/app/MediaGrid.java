@@ -3,6 +3,11 @@ package com.gallery.app;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Rect;
+import android.graphics.drawable.GradientDrawable;
+import android.view.HapticFeedbackConstants;
+import android.view.ViewConfiguration;
+import android.view.animation.DecelerateInterpolator;
+import android.widget.PopupWindow;
 import android.graphics.Typeface;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -56,7 +61,8 @@ public class MediaGrid extends LinearLayout {
     private final TextView title, subtitle;
     private LinearLayout topBlock;
     private ScrollHeader scroller;
-    private final ImageButton btnBack, btnA1, btnA2, btnDel, btnAll;
+    private final ImageButton btnBack, btnA1, btnA2, btnDel;
+    private final TextView pill;
     private final ImageView headerIcon;
     private final LinearLayout chipRow;
     private final HorizontalScrollView chipScroll;
@@ -73,19 +79,30 @@ public class MediaGrid extends LinearLayout {
     private final List<Object> items = new ArrayList<>();
     private final Set<String> sel = new LinkedHashSet<>();
     private boolean selecting;
-    private boolean dragSelect;          // finger is sliding over tiles after a long press (iOS swipe-to-select)
+    private boolean dragSelect;          // finger is sliding over tiles (iOS swipe-to-select)
     private int lastDragPos = -1;
-    private int filter;                 // 0 all, 1 photos, 2 videos, 3 favourites
-    private String query = "";
-    private int cols;
-    private String baseTitle = "";
-    private Runnable onBack;
-    private Runnable onSelectChange;
-    private final List<TextView> chips = new ArrayList<>();
-    private boolean built;                       // the list has been filled at least once
-    private int rebuildGen;                       // bumps on every rebuild(); a background pass that finishes
-                                                    // after a newer one started is discarded instead of applied
-    private final Runnable applyQuery = () -> rebuild(false);
+    private Set<String> dragBase = new LinkedHashSet<>();
+    private int dragAnchor = -1, dragLo = -1, dragHi = -1;
+    private boolean dragAdd = true;
+    private float dragX, dragY;
+    private int scrollDir;
+    private int downPos = -1;
+    private float downX, downY;
+    private final int touchSlop;
+    private int navInsetPx;
+    private LinearLayout selBar;
+    private ImageButton selShare, selDel;
+    private TextView selCount;
+    private PopupWindow popup;
+    private int selShownCount = -1;
+    private final Runnable autoScroller = this::autoScrollStep;
+
+    private void autoScrollStep() {
+        if (!dragSelect || scrollDir == 0) return;
+        rv.scrollBy(0, Math.round(scrollDir * Ui.dp(act, 14)));
+        dragMoveTo(dragX, dragY);
+        rv.postOnAnimation(autoScroller);
+    }
 
     public MediaGrid(BaseActivity a, int mode) {
         super(a);
@@ -106,14 +123,23 @@ public class MediaGrid extends LinearLayout {
         btnA2 = header.findViewById(R.id.btnA2);
         btnDel = header.findViewById(R.id.btnRefresh);
         headerIcon = header.findViewById(R.id.headerIcon);
-        btnAll = new ImageButton(a, null, 0, R.style.IconButton);
-        btnAll.setImageResource(R.drawable.ic_check_circle);
-        btnAll.setContentDescription(a.getString(R.string.select_all));
-        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(Ui.dp(a, 40), Ui.dp(a, 40));
-        ap.setMarginStart(Ui.dp(a, 8));
-        ((LinearLayout) header).addView(btnAll, ((LinearLayout) header).indexOfChild(btnA1), ap);
-        btnAll.setVisibility(GONE);
-        btnA1.setVisibility(VISIBLE);
+        touchSlop = ViewConfiguration.get(a).getScaledTouchSlop();
+        pill = new TextView(a);
+        pill.setTextSize(16f);
+        pill.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        pill.setTextColor(Ui.color(a, R.color.accent));
+        pill.setGravity(Gravity.CENTER);
+        pill.setSingleLine(true);
+        pill.setPadding(Ui.dp(a, 16), 0, Ui.dp(a, 16), 0);
+        GradientDrawable pg = new GradientDrawable();
+        pg.setCornerRadius(Ui.dp(a, 20));
+        pg.setColor(Ui.color(a, R.color.field));
+        pill.setBackground(pg);
+        Ui.press(a, pill);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, Ui.dp(a, 40));
+        pp.setMarginStart(Ui.dp(a, 8));
+        ((LinearLayout) header).addView(pill, ((LinearLayout) header).indexOfChild(btnA2) + 1, pp);
+        btnA1.setVisibility(GONE);
         btnA2.setVisibility(VISIBLE);
 
         // filter chips
@@ -221,10 +247,25 @@ public class MediaGrid extends LinearLayout {
             @Override
             public boolean onInterceptTouchEvent(RecyclerView r, MotionEvent e) {
                 sgd.onTouchEvent(e);
+                int act = e.getActionMasked();
+                if (act == MotionEvent.ACTION_DOWN) {
+                    downX = e.getX();
+                    downY = e.getY();
+                    View v = r.findChildViewUnder(downX, downY);
+                    downPos = v == null ? -1 : r.getChildAdapterPosition(v);
+                } else if (act == MotionEvent.ACTION_MOVE && selecting && !dragSelect && downPos >= 0 && e.getPointerCount() == 1) {
+                    // while selecting, a mostly sideways drag over the tiles selects them instead of scrolling
+                    float dx = Math.abs(e.getX() - downX), dy = Math.abs(e.getY() - downY);
+                    if (dx > touchSlop && dx > dy * 1.3f && downPos < items.size() && items.get(downPos) instanceof Media) {
+                        beginDrag(downPos, !sel.contains(((Media) items.get(downPos)).key()));
+                        dragX = e.getX();
+                        dragY = e.getY();
+                        return true;
+                    }
+                }
                 if (dragSelect) {
-                    int act = e.getActionMasked();
                     if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) {
-                        dragSelect = false;
+                        endDrag();
                         return false;
                     }
                     return act == MotionEvent.ACTION_MOVE;   // take over so the list does not scroll while selecting
@@ -237,20 +278,21 @@ public class MediaGrid extends LinearLayout {
                 if (!dragSelect) return;
                 int act = e.getActionMasked();
                 if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) {
-                    dragSelect = false;
+                    endDrag();
                     return;
                 }
                 if (act != MotionEvent.ACTION_MOVE) return;
-                View v = r.findChildViewUnder(e.getX(), e.getY());
-                if (v == null) return;
-                int pos = r.getChildAdapterPosition(v);
-                if (pos < 0 || pos == lastDragPos || pos >= items.size() || !(items.get(pos) instanceof Media)) return;
-                lastDragPos = pos;
-                Media m = (Media) items.get(pos);
-                if (sel.add(m.key())) {
-                    ad.notifyItemChanged(pos, "sel");
-                    updateHeader();
+                dragX = e.getX();
+                dragY = e.getY();
+                float top = r.getPaddingTop() + Ui.dp(act0(), 36);
+                float bottom = r.getHeight() - Ui.dp(act0(), 120);
+                int dir = dragY < top ? -1 : dragY > bottom ? 1 : 0;
+                if (dir != scrollDir) {
+                    scrollDir = dir;
+                    r.removeCallbacks(autoScroller);
+                    if (dir != 0) r.postOnAnimation(autoScroller);
                 }
+                dragMoveTo(dragX, dragY);
             }
         });
 
@@ -278,28 +320,67 @@ public class MediaGrid extends LinearLayout {
             if (selecting) exitSelect();
             else if (onBack != null) onBack.run();
         });
-        btnA1.setOnClickListener(v -> {
-            if (selecting) Actions.share(act, selected());
+        pill.setOnClickListener(v -> {
+            if (selecting) exitSelect();
             else enterSelect();
         });
         btnA2.setOnClickListener(v -> {
-            if (selecting) toggleFavSelected();
+            if (selecting) showSelectMenu(v);
             else showOptions();
         });
-        btnDel.setOnClickListener(v -> {
-            if (selecting) act.trashOrDelete(selected(), this::exitSelect);
-        });
-        btnAll.setOnClickListener(v -> selectAll());
+
+        selBar = new LinearLayout(a);
+        selBar.setOrientation(VERTICAL);
+        selBar.setBackgroundColor((Ui.color(a, R.color.bg) & 0x00FFFFFF) | 0xF2000000);
+        View hair = new View(a);
+        hair.setBackgroundColor(Ui.color(a, R.color.stroke_soft));
+        selBar.addView(hair, new LinearLayout.LayoutParams(-1, Math.max(1, Ui.dp(a, 1) / 2)));
+        LinearLayout selRow = new LinearLayout(a);
+        selRow.setOrientation(HORIZONTAL);
+        selRow.setGravity(Gravity.CENTER_VERTICAL);
+        selShare = barButton(R.drawable.ic_share, R.string.share);
+        selDel = barButton(R.drawable.ic_delete, R.string.delete);
+        selCount = new TextView(a);
+        selCount.setTextSize(16f);
+        selCount.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        selCount.setTextColor(Ui.color(a, R.color.text_primary));
+        selCount.setGravity(Gravity.CENTER);
+        selCount.setSingleLine(true);
+        selRow.addView(selShare, new LinearLayout.LayoutParams(Ui.dp(a, 64), Ui.dp(a, 52)));
+        selRow.addView(selCount, new LinearLayout.LayoutParams(0, Ui.dp(a, 52), 1f));
+        selRow.addView(selDel, new LinearLayout.LayoutParams(Ui.dp(a, 64), Ui.dp(a, 52)));
+        selBar.addView(selRow, new LinearLayout.LayoutParams(-1, -2));
+        selBar.setVisibility(INVISIBLE);
+        body.addView(selBar, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        selShare.setOnClickListener(v -> Actions.share(act, selected()));
+        selDel.setOnClickListener(v -> act.trashOrDelete(selected(), this::exitSelect));
 
         applyMode();
         updateHeader();
+    }
+
+    private BaseActivity act0() {
+        return act;
+    }
+
+    private ImageButton barButton(int icon, int desc) {
+        ImageButton b = new ImageButton(act);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(Ui.color(act, R.color.accent)));
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        b.setBackground(null);
+        b.setContentDescription(act.getString(desc));
+        Ui.press(act, b);
+        return b;
     }
 
     // ------------------------------------------------------------------ configuration
 
     /** Space for the system navigation bar under the floating tab bar (the list scrolls beneath the bar). */
     public void setBottomInset(int px) {
+        navInsetPx = px;
         if (scroller != null) scroller.setBottom(Ui.dp(act, 96) + px);
+        if (selBar != null) selBar.setPadding(0, 0, 0, px);
     }
 
     public void setTitle(String t) {
@@ -338,16 +419,26 @@ public class MediaGrid extends LinearLayout {
         Set<String> keys = new LinkedHashSet<>();
         for (Media m : source) keys.add(m.key());
         sel.retainAll(keys);
-        if (sel.isEmpty() && selecting) {
-            selecting = false;
-            selectChanged();
-        }
         rebuild(built);
     }
 
     /** Re-reads favourite / selection state of the visible tiles without reloading any picture. */
     public void refreshMarks() {
-        if (!items.isEmpty()) ad.notifyItemRangeChanged(0, items.size(), "sel");
+        notifyWindow();
+    }
+
+    /** Rebinds only the tiles on screen and the few cached around them; every other tile binds fresh when it scrolls in. */
+    private void notifyWindow() {
+        if (items.isEmpty()) return;
+        int first = glm.findFirstVisibleItemPosition();
+        int last = glm.findLastVisibleItemPosition();
+        if (first < 0 || last < 0) {
+            ad.notifyItemRangeChanged(0, Math.min(items.size(), 120), "sel");
+            return;
+        }
+        int from = Math.max(0, first - 80);
+        int to = Math.min(items.size(), last + 81);
+        ad.notifyItemRangeChanged(from, to - from, "sel");
     }
 
     /** Consumes the back press while selecting. */
@@ -556,27 +647,33 @@ public class MediaGrid extends LinearLayout {
 
     // ------------------------------------------------------------------ header
 
+    private void popView(View v) {
+        v.animate().cancel();
+        v.setAlpha(0f);
+        v.setScaleX(0.92f);
+        v.setScaleY(0.92f);
+        v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).setInterpolator(new DecelerateInterpolator(1.5f)).start();
+    }
+
     private void updateHeader() {
         if (scroller != null) scroller.setPinned(selecting);   // selection actions stay visible
         if (selecting) {
-            title.setText(act.getString(R.string.n_selected, sel.size()));
-            subtitle.setText("");
+            title.setText(R.string.select_items);
             subtitle.setVisibility(GONE);
-            btnBack.setVisibility(VISIBLE);
-            btnBack.setImageResource(R.drawable.ic_cancel);
+            btnBack.setVisibility(GONE);
             headerIcon.setVisibility(GONE);
-            btnAll.setVisibility(VISIBLE);
-            btnA1.setImageResource(R.drawable.ic_share);
-            btnA1.setContentDescription(act.getString(R.string.share));
-            boolean allFav = Library.allFav(act, selected());
-            btnA2.setImageResource(allFav ? R.drawable.ic_heart_fill : R.drawable.ic_heart);
-            btnA2.setContentDescription(act.getString(R.string.favorite));
-            btnDel.setVisibility(VISIBLE);
-            btnDel.setImageResource(R.drawable.ic_delete);
-            btnDel.setContentDescription(act.getString(R.string.delete));
+            btnA1.setVisibility(GONE);
+            btnA2.setImageResource(R.drawable.ic_more);
+            btnA2.setContentDescription(act.getString(R.string.view_options));
+            btnDel.setVisibility(GONE);
+            if (!act.getString(R.string.cancel).contentEquals(pill.getText())) {
+                pill.setText(R.string.cancel);
+                popView(pill);
+            }
+            pill.setVisibility(VISIBLE);
+            updateSelBar();
             return;
         }
-        btnAll.setVisibility(GONE);
         subtitle.setVisibility(VISIBLE);
         btnBack.setImageResource(R.drawable.ic_back);
         btnBack.setVisibility(onBack != null ? VISIBLE : GONE);
@@ -588,12 +685,51 @@ public class MediaGrid extends LinearLayout {
             else photos++;
         }
         subtitle.setText(act.getString(R.string.counts, photos, videos));
-        btnA1.setImageResource(R.drawable.ic_check_circle);
-        btnA1.setContentDescription(act.getString(R.string.select));
-        btnA2.setImageResource(R.drawable.ic_sort);
+        btnA1.setVisibility(GONE);
+        btnA2.setImageResource(R.drawable.ic_more);
         btnA2.setContentDescription(act.getString(R.string.view_options));
         btnDel.setVisibility(GONE);
-        btnA1.setVisibility(shown.isEmpty() ? INVISIBLE : VISIBLE);
+        if (!act.getString(R.string.select).contentEquals(pill.getText())) {
+            pill.setText(R.string.select);
+            popView(pill);
+        }
+        pill.setVisibility(shown.isEmpty() ? INVISIBLE : VISIBLE);
+        updateSelBar();
+    }
+
+    /** Bottom bar: share, "N selected", delete. Slides up while selecting. */
+    private void updateSelBar() {
+        if (selBar == null) return;
+        selBar.animate().cancel();
+        if (selecting) {
+            boolean any = !sel.isEmpty();
+            selShare.setEnabled(any);
+            selDel.setEnabled(any);
+            selShare.setAlpha(any ? 1f : 0.35f);
+            selDel.setAlpha(any ? 1f : 0.35f);
+            if (selShownCount != sel.size()) {
+                boolean first = selShownCount < 0;
+                selShownCount = sel.size();
+                selCount.setText(any ? act.getString(R.string.n_selected, sel.size()) : act.getString(R.string.select_items));
+                if (!first) {
+                    selCount.animate().cancel();
+                    selCount.setAlpha(0.4f);
+                    selCount.animate().alpha(1f).setDuration(140).start();
+                }
+            }
+            if (selBar.getVisibility() != VISIBLE) {
+                selBar.setVisibility(VISIBLE);
+                selBar.setAlpha(0f);
+                selBar.setTranslationY(Ui.dp(act, 64));
+                selBar.animate().alpha(1f).translationY(0f).setDuration(320)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(0.8f)).start();
+            }
+        } else if (selBar.getVisibility() == VISIBLE) {
+            selShownCount = -1;
+            selBar.animate().alpha(0f).translationY(Ui.dp(act, 64)).setDuration(220)
+                    .setInterpolator(new DecelerateInterpolator(1.4f))
+                    .withEndAction(() -> selBar.setVisibility(INVISIBLE)).start();
+        }
     }
 
     // ------------------------------------------------------------------ selection
@@ -605,43 +741,33 @@ public class MediaGrid extends LinearLayout {
     }
 
     private void enterSelect() {
+        if (selecting) return;
         selecting = true;
         selectChanged();
         updateHeader();
-        ad.notifyItemRangeChanged(0, items.size(), "sel");
+        notifyWindow();
     }
 
     private void exitSelect() {
+        endDrag();
         selecting = false;
         sel.clear();
         selectChanged();
         updateHeader();
-        ad.notifyItemRangeChanged(0, items.size(), "sel");
+        notifyWindow();
     }
 
-    private void toggle(Media m) {
+    private void toggle(Media m, int pos) {
         if (!sel.remove(m.key())) sel.add(m.key());
-        if (sel.isEmpty()) {
-            exitSelect();
-            return;
-        }
-        for (int i = 0; i < items.size(); i++) {
-            if (items.get(i) == m) {
-                ad.notifyItemChanged(i, "sel");
-                break;
-            }
-        }
+        if (pos >= 0 && pos < items.size()) ad.notifyItemChanged(pos, "sel");
         updateHeader();
     }
 
     private void selectAll() {
-        if (sel.size() == shown.size()) {
-            exitSelect();
-            return;
-        }
-        for (Media m : shown) sel.add(m.key());
+        if (sel.size() == shown.size()) sel.clear();
+        else for (Media m : shown) sel.add(m.key());
         updateHeader();
-        ad.notifyItemRangeChanged(0, items.size(), "sel");
+        notifyWindow();
     }
 
     private void toggleFavSelected() {
@@ -651,6 +777,72 @@ public class MediaGrid extends LinearLayout {
         Toast.makeText(act, on ? R.string.fav_added : R.string.fav_removed, Toast.LENGTH_SHORT).show();
         exitSelect();
         rebuild();
+    }
+
+    private void showSelectMenu(View anchor) {
+        if (popup != null && popup.isShowing()) {
+            popup.dismiss();
+            return;
+        }
+        List<IosMenu.Item> menu = new ArrayList<>();
+        boolean all = !shown.isEmpty() && sel.size() == shown.size();
+        menu.add(new IosMenu.Item(all ? R.string.deselect_all : R.string.select_all, R.drawable.ic_check_circle, false, this::selectAll));
+        if (!sel.isEmpty()) menu.add(new IosMenu.Item(R.string.favorite, R.drawable.ic_heart, false, this::toggleFavSelected));
+        popup = IosMenu.show(act, anchor, menu);
+    }
+
+    /** Starts a swipe selection at {@code pos}: everything between the first tile and the finger is selected (or deselected). */
+    private void beginDrag(int pos, boolean add) {
+        dragSelect = true;
+        dragAdd = add;
+        dragAnchor = pos;
+        dragLo = pos;
+        dragHi = pos;
+        lastDragPos = pos;
+        dragBase = new LinkedHashSet<>(sel);
+        scrollDir = 0;
+        applyDragRange(pos, pos, pos, pos);
+    }
+
+    private void endDrag() {
+        dragSelect = false;
+        scrollDir = 0;
+        lastDragPos = -1;
+        downPos = -1;
+        rv.removeCallbacks(autoScroller);
+    }
+
+    private void dragMoveTo(float x, float y) {
+        View v = rv.findChildViewUnder(x, y);
+        if (v == null) return;
+        int pos = rv.getChildAdapterPosition(v);
+        if (pos < 0 || pos == lastDragPos || pos >= items.size() || !(items.get(pos) instanceof Media)) return;
+        lastDragPos = pos;
+        int oldLo = dragLo, oldHi = dragHi;
+        dragLo = Math.min(dragAnchor, pos);
+        dragHi = Math.max(dragAnchor, pos);
+        applyDragRange(oldLo, oldHi, dragLo, dragHi);
+    }
+
+    private void applyDragRange(int oldLo, int oldHi, int lo, int hi) {
+        int from = Math.max(0, Math.min(oldLo, lo));
+        int to = Math.min(items.size() - 1, Math.max(oldHi, hi));
+        boolean changed = false;
+        for (int i = from; i <= to; i++) {
+            Object o = items.get(i);
+            if (!(o instanceof Media)) continue;
+            String key = ((Media) o).key();
+            boolean want = i >= lo && i <= hi ? dragAdd : dragBase.contains(key);
+            if (want == sel.contains(key)) continue;
+            if (want) sel.add(key);
+            else sel.remove(key);
+            ad.notifyItemChanged(i, "sel");
+            changed = true;
+        }
+        if (changed) {
+            rv.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+            updateHeader();
+        }
     }
 
     // ------------------------------------------------------------------ view options dialog
@@ -737,9 +929,28 @@ public class MediaGrid extends LinearLayout {
                 t.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));
                 return new RecyclerView.ViewHolder(t) { };
             }
-            Tile tile = new Tile(c);
+            final Tile tile = new Tile(c);
             tile.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));
-            return new RecyclerView.ViewHolder(tile) { };
+            final RecyclerView.ViewHolder holder = new RecyclerView.ViewHolder(tile) { };
+            // listeners resolve the item from the holder's CURRENT position when tapped, so a partial rebind or a
+            // DiffUtil move never leaves a stale item behind; they are created once per holder, not on every bind
+            tile.setOnClickListener(v -> {
+                int pos = holder.getBindingAdapterPosition();
+                Media cur = mediaAt(pos);
+                if (cur == null) return;
+                if (selecting) toggle(cur, pos);
+                else open(cur, tile);
+            });
+            tile.setOnLongClickListener(v -> {
+                int pos = holder.getBindingAdapterPosition();
+                Media cur = mediaAt(pos);
+                if (cur == null) return true;
+                if (!selecting) enterSelect();
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                beginDrag(pos, !sel.contains(cur.key()));
+                return true;
+            });
+            return holder;
         }
 
         @Override
@@ -751,35 +962,11 @@ public class MediaGrid extends LinearLayout {
             }
             final Media m = (Media) o;
             final Tile t = (Tile) h.itemView;
-            int px = Math.max(120, getResources().getDisplayMetrics().widthPixels / Math.max(1, cols));
-            t.setScaleX(1f);
-            t.setScaleY(1f);
-            t.bind(m, px, Library.isFav(act, m));
+            t.bind(m, tilePx(), Library.isFav(act, m));
             t.setSelection(selecting, sel.contains(m.key()), false);
-            // Resolve the item from the holder's CURRENT position when tapped. A partial ("sel") rebind or a
-            // DiffUtil move keeps this listener while the library reload replaced every Media instance, so a
-            // captured `m` went stale and taps silently did nothing until the whole grid was rebound.
-            final RecyclerView.ViewHolder holder = h;
-            t.setOnClickListener(v -> {
-                Media cur = mediaAt(holder);
-                if (cur == null) return;
-                if (selecting) toggle(cur);
-                else open(cur);
-            });
-            t.setOnLongClickListener(v -> {
-                Media cur = mediaAt(holder);
-                if (cur == null) return true;
-                if (!selecting) enterSelect();
-                if (!sel.contains(cur.key())) toggle(cur);   // long press selects; sliding the finger keeps adding tiles
-                v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
-                dragSelect = true;
-                lastDragPos = items.indexOf(cur);
-                return true;
-            });
         }
 
-        private Media mediaAt(RecyclerView.ViewHolder h) {
-            int pos = h.getBindingAdapterPosition();
+        private Media mediaAt(int pos) {
             if (pos < 0 || pos >= items.size()) return null;
             Object o = items.get(pos);
             return o instanceof Media ? (Media) o : null;
@@ -803,7 +990,35 @@ public class MediaGrid extends LinearLayout {
         }
     }
 
-    private void open(Media m) {
+    private int tilePx() {
+        return Math.max(120, getResources().getDisplayMetrics().widthPixels / Math.max(1, cols));
+    }
+
+    private Rect tileRect(Tile t) {
+        int[] o = new int[2];
+        t.thumb.getLocationOnScreen(o);
+        return new Rect(o[0], o[1], o[0] + t.thumb.getWidth(), o[1] + t.thumb.getHeight());
+    }
+
+    /** Screen rectangle of the visible tile that shows {@code key}; the viewer shrinks the picture back into it. */
+    private Rect locate(String key) {
+        if (!isAttachedToWindow()) return null;
+        Rect vis = new Rect();
+        if (!rv.getGlobalVisibleRect(vis)) return null;
+        for (int i = 0; i < rv.getChildCount(); i++) {
+            View c = rv.getChildAt(i);
+            if (!(c instanceof Tile)) continue;
+            int pos = rv.getChildViewHolder(c).getBindingAdapterPosition();
+            if (pos < 0 || pos >= items.size() || !(items.get(pos) instanceof Media)) continue;
+            if (!((Media) items.get(pos)).key().equals(key)) continue;
+            Rect r = tileRect((Tile) c);
+            int cx = r.centerX(), cy = r.centerY();
+            return vis.contains(cx, cy) ? r : null;
+        }
+        return null;
+    }
+
+    private void open(Media m, Tile tile) {
         int idx = -1;
         for (int i = 0; i < shown.size(); i++) {
             if (shown.get(i).key().equals(m.key())) {
@@ -812,6 +1027,7 @@ public class MediaGrid extends LinearLayout {
             }
         }
         if (idx < 0) return;
+        Hero.set(m.key(), tile != null ? tileRect(tile) : null, tilePx(), this::locate);
         Actions.openViewer(act, shown, idx);
     }
 }

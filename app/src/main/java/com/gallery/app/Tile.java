@@ -98,31 +98,74 @@ final class Tile extends FrameLayout {
         setContentDescription(m.name);
     }
 
+    private GradientDrawable ringBg, onBg;
+    private boolean lastSelecting, lastSelected;
+
     /**
      * iOS selection: while selecting every tile shows a small ring in its bottom corner; a selected tile gets a
-     * filled blue circle with a white check and a light dim. The picture itself never moves or shrinks, so the
-     * grid stays perfectly aligned.
+     * filled blue circle with a white check that pops in, and a light dim. The picture itself never moves or
+     * shrinks, so the grid stays perfectly aligned.
      */
     void setSelection(boolean selecting, boolean selected, boolean animate) {
         Context c = getContext();
-        scrim.setVisibility(selected ? VISIBLE : GONE);
+        if (ringBg == null) {
+            ringBg = new GradientDrawable();
+            ringBg.setShape(GradientDrawable.OVAL);
+            ringBg.setColor(0x33000000);
+            ringBg.setStroke(Ui.dp(c, 2), 0xFFFFFFFF);
+            onBg = new GradientDrawable();
+            onBg.setShape(GradientDrawable.OVAL);
+            onBg.setColor(Ui.color(c, R.color.accent));
+            onBg.setStroke(Ui.dp(c, 2), 0xFFFFFFFF);
+        }
+        boolean wasSelecting = lastSelecting, wasSelected = lastSelected;
+        lastSelecting = selecting;
+        lastSelected = selected;
+        scrim.animate().cancel();
+        check.animate().cancel();
         if (!selecting) {
-            check.setVisibility(GONE);
-        } else {
-            check.setVisibility(VISIBLE);
-            GradientDrawable g = new GradientDrawable();
-            g.setShape(GradientDrawable.OVAL);
-            if (selected) {
-                g.setColor(Ui.color(c, R.color.accent));
-                g.setStroke(Ui.dp(c, 2), 0xFFFFFFFF);
-                check.setImageResource(R.drawable.ic_check);
-                check.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+            scrim.setVisibility(GONE);
+            if (animate && wasSelecting && check.getVisibility() == VISIBLE) {
+                check.animate().alpha(0f).scaleX(0.6f).scaleY(0.6f).setDuration(140).withEndAction(() -> check.setVisibility(GONE)).start();
             } else {
-                g.setColor(0x33000000);
-                g.setStroke(Ui.dp(c, 2), 0xFFFFFFFF);
-                check.setImageDrawable(null);
+                check.setVisibility(GONE);
             }
-            check.setBackground(g);
+            if (isSelected()) setSelected(false);
+            return;
+        }
+        check.setBackground(selected ? onBg : ringBg);
+        if (selected) {
+            check.setImageResource(R.drawable.ic_check);
+            check.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+        } else {
+            check.setImageDrawable(null);
+        }
+        boolean appearing = check.getVisibility() != VISIBLE;
+        check.setVisibility(VISIBLE);
+        if (!animate) {
+            check.setAlpha(1f);
+            check.setScaleX(1f);
+            check.setScaleY(1f);
+            scrim.setAlpha(1f);
+            scrim.setVisibility(selected ? VISIBLE : GONE);
+        } else {
+            if (appearing) {
+                check.setAlpha(0f);
+                check.setScaleX(0.6f);
+                check.setScaleY(0.6f);
+                check.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).start();
+            } else if (selected != wasSelected) {
+                check.setScaleX(selected ? 0.55f : 1f);
+                check.setScaleY(selected ? 0.55f : 1f);
+                check.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(new android.view.animation.OvershootInterpolator(3.2f)).start();
+            }
+            if (selected) {
+                scrim.setVisibility(VISIBLE);
+                scrim.setAlpha(wasSelected ? 1f : 0f);
+                scrim.animate().alpha(1f).setDuration(140).start();
+            } else {
+                scrim.animate().alpha(0f).setDuration(120).withEndAction(() -> scrim.setVisibility(GONE)).start();
+            }
         }
         if (isSelected() != selected) setSelected(selected);
     }

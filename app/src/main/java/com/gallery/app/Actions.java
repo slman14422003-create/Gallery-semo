@@ -54,8 +54,9 @@ final class Actions {
 
     static void openViewer(Activity a, List<Media> list, int index) {
         Library.setSession(list, index);
+        boolean zoom = Hero.rect != null;
         a.startActivity(new Intent(a, ViewerActivity.class));
-        Motion.legacy(a, R.anim.viewer_open_enter, R.anim.hold);
+        Motion.legacy(a, zoom ? R.anim.none : R.anim.viewer_open_enter, zoom ? R.anim.none : R.anim.hold);
     }
 
     static void play(Activity a, List<Media> list, int index) {
