@@ -81,24 +81,18 @@ jobs:
       - name: Security guard (network and file exposure)
         run: |
           SRC=app/src/main/java
-          # 1) HTTP / web / download classes may only appear in Net.java (update check); Updater.java only uses its connection type; docedit/DictionaryPacks.java (dictionary pack download) and docedit/EdgeTtsClient.java (read-aloud websocket) are the only other allowed network clients
-          if grep -rEn "HttpURLConnection|HttpsURLConnection|okhttp|android\.net\.http|loadUrl\(|DownloadManager" $SRC \
-               | grep -v -E "/(Net|Updater|DictionaryPacks|EdgeTtsClient)\.java:"; then
-            echo "::error title=Network guard::http code outside Net.java"; exit 1
+          # 1) network classes may only appear in Net.java (Updater.java only uses its connection type)
+          if grep -rEn "java\.net\.|HttpURLConnection|HttpsURLConnection|okhttp|android\.net\.http|javax\.net|loadUrl\(|DownloadManager" $SRC \
+               | grep -v -E "/(Net|Updater)\.java:"; then
+            echo "::error title=Network guard::network code outside Net.java"; exit 1
           fi
-          # 1b) raw socket / address classes may only appear in Net, Updater and the local file-sharing classes (Share*), plus the bundled reandroid json library (URL encode/decode only)
-          if grep -rEn "java\.net\.|javax\.net" $SRC \
-               | grep -v -E "/(Net|Updater|DictionaryPacks|EdgeTtsClient|ShareNet|ShareServer|ShareClient|ShareReceiveActivity)\.java:" \
-               | grep -v -E "/com/reandroid/json/JSONPointer\.java:"; then
-            echo "::error title=Network guard::socket code outside the allowed files"; exit 1
-          fi
-          # 2) only the launcher and the screens that replace the system installer / Files app (install, open link, file picker) may be exported
+          # 2) only the launcher and the "Open with" screen may be exported
           M=app/src/main/AndroidManifest.xml
-          EXP="$(grep -B1 'android:exported="true"' $M | grep -o 'android:name="[^"]*"' | grep -v 'android:name="\.Icon' | sort | tr '\n' ' ')"
-          [ "$EXP" = 'android:name=".HomeActivity" android:name=".InstallActivity" android:name=".OpenActivity" android:name=".PickActivity" ' ] || { echo "::error::only HomeActivity, InstallActivity, OpenActivity and PickActivity may be exported (found: $EXP)"; exit 1; }
-          # the install screen must only read the data URI it is opened with (no path/text extras from other apps)
-          for X in InstallActivity OpenActivity PickActivity; do
-            if grep -n 'getIntent()\.get\(String\|Parcelable\|Serializable\)\|\bin\.get\(String\|Parcelable\|Serializable\)' $SRC/com/fileman/app/$X.java; then
+          EXP="$(grep -B1 'android:exported="true"' $M | grep -o 'android:name="[^"]*"' | sort | tr '\n' ' ')"
+          [ "$EXP" = 'android:name=".MainActivity" android:name=".OpenActivity" ' ] || { echo "::error::only MainActivity and OpenActivity may be exported (found: $EXP)"; exit 1; }
+          # the open-with screen must only read the data URI it is opened with (no path/text extras from other apps)
+          for X in OpenActivity; do
+            if grep -n 'getIntent()\.get\(String\|Parcelable\|Serializable\)\|\bin\.get\(String\|Parcelable\|Serializable\)' $SRC/com/gallery/app/$X.java; then
               echo "::error::$X must not read string/parcelable extras (it is exported)"; exit 1; fi
           done
           grep -q 'android:usesCleartextTraffic="false"' $M || { echo "::error::cleartext must stay disabled"; exit 1; }
@@ -133,7 +127,7 @@ jobs:
         run: |
           # accept STORE_PASSWORD too (that is the name used inside signing-info.txt) and fall back to KEY_PASSWORD
           STORE_PASS="${KEYSTORE_PASSWORD:-${STORE_PASSWORD:-$KEY_PASSWORD}}"
-          ALIAS="${KEY_ALIAS:-fileman}"
+          ALIAS="${KEY_ALIAS:-gallery}"
           MISSING=""
           [ -z "$KEYSTORE_BASE64" ] && MISSING="$MISSING KEYSTORE_BASE64"
           [ -z "$STORE_PASS" ] && MISSING="$MISSING KEYSTORE_PASSWORD"
@@ -159,10 +153,6 @@ jobs:
             echo "SIGNING_KEY_PASSWORD=${KEY_PASSWORD:-$STORE_PASS}"
             echo "SIGNING_MODE=مفتاح المستودع الدائم"
           } >> "$GITHUB_ENV"
-          # pin the release certificate inside the app: a re-signed copy refuses to run (Integrity.java)
-          CERT=$(keytool -list -v -keystore "$RUNNER_TEMP/release.jks" -storepass "$STORE_PASS" -alias "$ALIAS" 2>/dev/null \
-            | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ':' | tr 'A-F' 'a-f')
-          [ -n "$CERT" ] && echo "CERT_SHA256=$CERT" >> "$GITHUB_ENV"
           echo "permanent=true" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
@@ -181,12 +171,12 @@ jobs:
         run: |
           APK_SRC="$(ls app/build/outputs/apk/${BUILD_TYPE}/*.apk | head -n1)"
           mkdir -p dist
-          APK="dist/FileManager-${TAG}-${BUILD_TYPE}.apk"
+          APK="dist/Gallery-${TAG}-${BUILD_TYPE}.apk"
           cp "$APK_SRC" "$APK"
           APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n1)"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           {
-            echo "## ✅ File Manager — $BUILD_TYPE"
+            echo "## ✅ Gallery Studio — $BUILD_TYPE"
             echo ""
             echo "| | |"
             echo "|---|---|"
@@ -198,9 +188,19 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FileManager-${{ env.BUILD_TYPE }}-apk
+          name: Gallery-${{ env.BUILD_TYPE }}-apk
           path: dist/*.apk
           if-no-files-found: error
+          retention-days: 30
+
+      # R8 mapping: turns obfuscated crash stack traces back into readable ones
+      - name: Upload R8 mapping
+        if: ${{ env.BUILD_TYPE == 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gallery-r8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: ignore
           retention-days: 30
 
       # Never publish a Release that users cannot install over the previous one.
@@ -224,7 +224,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: FileManager-release-apk
+          name: Gallery-release-apk
           path: dist
 
       - name: Create or update release

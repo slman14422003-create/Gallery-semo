@@ -1,8 +1,12 @@
+# ---------------------------------------------------------------------------
+# R8 (full mode). Built with proguard-android-optimize.txt + the rules below.
+# ---------------------------------------------------------------------------
+
 # Keep readable stack traces in crash reports (mapping.txt is uploaded by the workflow)
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Hardening: remove all debug/verbose logging and flatten package names
+# Hardening + size: strip debug/verbose logging, flatten package names, let R8 widen access to inline more
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);
@@ -11,39 +15,40 @@
 -repackageclasses ''
 -allowaccessmodification
 
-# Extra archive formats (ArcExtra is loaded by name from Arc)
--keep class com.fileman.app.ArcExtra { public static *; }
--keep class com.fileman.app.ArcExtra$* { *; }
--keep class com.fileman.app.Arc$Backend { *; }
--dontwarn org.apache.commons.compress.**
--dontwarn org.tukaani.xz.**
--dontwarn com.github.junrar.**
--dontwarn org.slf4j.**
--dontwarn com.github.luben.zstd.**
--dontwarn org.brotli.dec.**
--dontwarn org.objectweb.asm.**
-
--keep class com.reandroid.** { *; }
--keep class com.android.apksig.** { *; }
--keep class com.aefyr.pseudoapksigner.** { *; }
--dontwarn com.reandroid.**
--dontwarn com.android.apksig.**
--dontwarn javax.annotation.**
--dontwarn org.apache.commons.**
-
--keepclassmembers class androidx.appcompat.widget.ButtonBarLayout { public void setAllowStacking(boolean); }
-
--keep class eightbitlab.com.blurview.** { *; }
--dontwarn eightbitlab.com.blurview.**
-
-# Word / Excel editor: methods called from the editor page's JavaScript
--keepclassmembers class com.fileman.app.DocEditActivity$Bridge {
-    @android.webkit.JavascriptInterface <methods>;
+# Kotlin null-check helpers are pure overhead in release builds (libVLC / media3 pull Kotlin in)
+-assumenosideeffects class kotlin.jvm.internal.Intrinsics {
+    public static void checkNotNull(...);
+    public static void checkNotNullParameter(...);
+    public static void checkNotNullExpressionValue(...);
+    public static void checkParameterIsNotNull(...);
+    public static void checkExpressionValueIsNotNull(...);
+    public static void checkReturnedValueIsNotNull(...);
+    public static void checkFieldIsNotNull(...);
 }
--keepattributes JavascriptInterface
 
-# OkHttp (EdgeTtsClient) optional TLS providers
--dontwarn okhttp3.internal.platform.**
--dontwarn org.conscrypt.**
--dontwarn org.bouncycastle.**
--dontwarn org.openjsse.**
+# libVLC talks to native code through JNI
+-keep class org.videolan.libvlc.** { *; }
+-dontwarn org.videolan.**
+
+# Glide
+-keep public class * implements com.bumptech.glide.module.GlideModule
+-keep class * extends com.bumptech.glide.module.AppGlideModule { <init>(...); }
+-keep public enum com.bumptech.glide.load.ImageHeaderParser$** { **[] $VALUES; public *; }
+
+# Optional annotation / tooling classes that are referenced but not shipped
+-dontwarn javax.annotation.**
+-dontwarn org.checkerframework.**
+-dontwarn org.jetbrains.annotations.**
+-dontwarn com.google.errorprone.annotations.**
+
+# Tesseract (JNI)
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
+-dontwarn com.google.mlkit.**
+
+# Media3 loads its effect / video-graph classes by reflection; without these the editor preview and export ignore every edit
+-keep class androidx.media3.effect.** { *; }
+-keep class androidx.media3.transformer.** { *; }
+-keep class androidx.media3.exoplayer.video.** { *; }
+-keep class androidx.media3.exoplayer.ExoPlayerImpl { *; }
+-dontwarn androidx.media3.**
