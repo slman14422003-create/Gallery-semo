@@ -14,13 +14,12 @@
 المفتاح الذي يُنشأ هنا **صالح ٣٠ سنة** (`-validity 10950`).
 
 1. أنشئ مفتاحًا دائمًا:
-   - من GitHub: **Actions ← Generate signing key ← Run workflow**، ثم نزّل الـ Artifact `signing-key`.
-     يعمل أيضًا في المستودع **العام**، لكن عندها يستطيع أي حساب GitHub تنزيل الـ Artifact حتى تحذفه: نزّله فورًا ثم احذفه من صفحة التشغيل (Delete artifact).
+   - من GitHub: **Actions ← Generate signing key ← Run workflow** (المستودع يجب أن يكون **Private**)، ثم نزّل الـ Artifact `signing-key`.
    - أو على جهازك: `./tools/make-keystore.sh`
 2. أضف أسرار المستودع (Settings ← Secrets and variables ← Actions):
    - `KEYSTORE_BASE64` — محتوى الملف `KEYSTORE_BASE64.txt` (يُنشأ تلقائيًا مع المفتاح)
    - `KEYSTORE_PASSWORD`
-   - `KEY_ALIAS` (الافتراضي `gallery`)
+   - `KEY_ALIAS` (الافتراضي `fileman`)
    - `KEY_PASSWORD` (اختياري إن كانت مثل كلمة مرور الملف)
 3. احتفظ بنسخة احتياطية من `release.jks` وكلمة المرور خارج GitHub. فقدانه = لا تحديثات بعد اليوم.
 
