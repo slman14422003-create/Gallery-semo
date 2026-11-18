@@ -111,6 +111,66 @@ public abstract class BaseActivity extends AppCompatActivity {
         final List<Media> snapshot = new ArrayList<>(items);
         final List<Uri> uris = new ArrayList<>();
         for (Media m : snapshot) uris.add(m.uri);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (MediaStore.canManageMedia(this)) {
+                trashSilently(snapshot, done);      // media management allowed: no system dialog
+                return;
+            }
+            if (!Store.flag(this, "mm_asked")) {    // offer it once
+                Store.setFlag(this, "mm_asked", true);
+                new Dlg(this).setTitle(R.string.mm_title).setMessage(R.string.mm_msg)
+                        .setPositiveButton(R.string.mm_allow, (d, w) -> {
+                            try {
+                                startActivity(new android.content.Intent(android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA,
+                                        Uri.parse("package:" + getPackageName())));
+                            } catch (Exception e) {
+                                Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show();
+                            }
+                        })
+                        .setNegativeButton(R.string.mm_later, (d, w) -> systemTrash(snapshot, uris, done))
+                        .show();
+                return;
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            systemTrash(snapshot, uris, done);
+            return;
+        }
+        legacyDeleteDialog(snapshot, uris, done);
+    }
+
+    /** Trashes on a worker thread with a plain update (IS_TRASHED); anything refused falls back to the system dialog. */
+    private void trashSilently(final List<Media> items, final Runnable done) {
+        final ContentResolver cr = getContentResolver();
+        new Thread(() -> {
+            final List<Media> ok = new ArrayList<>();
+            final List<Media> failed = new ArrayList<>();
+            for (Media m : items) {
+                try {
+                    android.content.ContentValues cv = new android.content.ContentValues();
+                    cv.put(MediaStore.MediaColumns.IS_TRASHED, 1);
+                    if (cr.update(m.uri, cv, null, null) > 0) ok.add(m);
+                    else failed.add(m);
+                } catch (Exception e) {
+                    failed.add(m);
+                }
+            }
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                if (!ok.isEmpty()) {
+                    Library.removeNow(this, ok);
+                    if (done != null && failed.isEmpty()) done.run();
+                }
+                if (!failed.isEmpty()) {
+                    List<Uri> u = new ArrayList<>();
+                    for (Media m : failed) u.add(m.uri);
+                    systemTrash(failed, u, done);
+                }
+            });
+        }).start();
+    }
+
+    private void systemTrash(final List<Media> snapshot, final List<Uri> uris, final Runnable done) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 PendingIntent pi = MediaStore.createTrashRequest(getContentResolver(), uris, true);
@@ -123,6 +183,10 @@ public abstract class BaseActivity extends AppCompatActivity {
             }
             return;
         }
+        legacyDeleteDialog(snapshot, uris, done);
+    }
+
+    private void legacyDeleteDialog(final List<Media> snapshot, final List<Uri> uris, final Runnable done) {
         new Dlg(this)
                 .setTitle(getResources().getQuantityString(R.plurals.del_title, snapshot.size(), snapshot.size()))
                 .setMessage(R.string.del_perm_msg)

@@ -66,3 +66,15 @@
 - محرّر الصور (بيتا): قص بنسب جاهزة، تدوير وقلب، سطوع وتباين وتشبّع ودفء وتظليل، 9 فلاتر، رسم بالفرشاة، نصوص، تراجع. يحفظ نسخة جديدة.
 - محرّر الفيديو (بيتا): قص بشريط لقطات، تدوير وقلب، قص بنسبة، فلاتر وسطوع وتباين، كتم الصوت، تصدير MP4 جديد.
 - تحديث ذاتي من GitHub Releases.
+
+## iPhone-style pass
+- Tab bar: one highlight you can press and drag between tabs (haptic tick, settles with a bounce).
+- Selecting: floating glass toolbar (share / N selected / delete) replaces the tab bar; also in albums.
+- Status bar transparent: photos and albums scroll under it with a soft fade.
+- Edge swipe-back on Album, Settings, Update; push transitions everywhere; editors open as bottom sheets.
+
+## iOS Photos viewer / editors / player
+- Delete: with "Media management" enabled for the app, photos go to the bin with no system dialog (asked once).
+- Viewer: glass back circle, date/time capsule, "..." menu (Edit, Info, Live Text, Slideshow); bottom share circle, heart/info/edit capsule, trash circle.
+- Photo + video editors: Cancel / yellow Done pills, tool-name chip, "..." menu, floating tool bar. Video editor: Save Video Frame as Photo.
+- Player: glass back / title / "..." top row, play + seek capsule, tool row under it.

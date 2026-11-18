@@ -92,6 +92,10 @@ public class VideoEditorActivity extends BaseActivity {
     private RulerView filterRuler;
     private final List<LinearLayout> filterCells = new ArrayList<>();
     private final List<LinearLayout> toolItems = new ArrayList<>();
+    private TextView toolChip;
+    private boolean muted;
+    private static final int[] TAB_LABELS = {R.string.v_tab_edit, R.string.v_tab_speed, R.string.v_tab_filters, R.string.v_tab_adjust,
+            R.string.v_tab_audio, R.string.v_tab_text, R.string.v_ai, R.string.v_tab_compress};
     private boolean dragging, dragMoved;
     private float dragX, dragY, grabX, grabY;
     private SeekBar sbVolume, sbSize;
@@ -162,22 +166,21 @@ public class VideoEditorActivity extends BaseActivity {
         root.setBackgroundColor(Ui.color(this, R.color.bg));
         setContentView(root);
 
-        LinearLayout head = new LinearLayout(this);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
-        LinearLayout left = new LinearLayout(this);
-        left.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        // iOS 26 Photos video editor top: [Cancel .. Done] over [sound | VIDEO | ...]
         TextView cancel = Ios.navText(this, getString(R.string.cancel), false);
         cancel.setOnClickListener(v -> askLeave());
-        left.addView(cancel);
-        head.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
-        LinearLayout right = new LinearLayout(this);
-        right.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         TextView export = Ios.navText(this, getString(R.string.done), true);
         export.setOnClickListener(v -> export());
-        right.addView(export);
-        head.addView(right, new LinearLayout.LayoutParams(0, -2, 1f));
-        root.addView(head, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
+        final ImageButton sound = Ios.flatIcon(this, R.drawable.ic_volume, R.string.t_audio, null);
+        sound.setOnClickListener(v -> {
+            muted = !muted;
+            if (player != null) player.setVolume(muted ? 0f : 1f);
+            sound.setImageResource(muted ? R.drawable.ic_volume_off : R.drawable.ic_volume);
+        });
+        toolChip = Ios.chip(this, getString(R.string.v_tab_edit));
+        ImageButton moreBtn = Ios.flatIcon(this, R.drawable.ic_more, R.string.view_options, v -> showVideoMenu(v));
+        root.addView(Ios.topArea(this, cancel, export, Ios.capsule(this, sound), toolChip, Ios.capsule(this, moreBtn)),
+                new LinearLayout.LayoutParams(-1, -2));
 
         // preview
         FrameLayout pv = new FrameLayout(this);
@@ -303,8 +306,10 @@ public class VideoEditorActivity extends BaseActivity {
         }
         tabScroll.addView(tabRow);
         panel.addView(holder, new LinearLayout.LayoutParams(-1, 0, 1f));
-        panel.addView(Ios.hairline(this));
-        panel.addView(tabScroll);
+        Ios.floatingBar(this, tabScroll);
+        LinearLayout.LayoutParams tabLp = new LinearLayout.LayoutParams(-1, -2);
+        tabLp.setMargins(Ui.dp(this, 16), Ui.dp(this, 4), Ui.dp(this, 16), Ui.dp(this, 12));
+        panel.addView(tabScroll, tabLp);
         root.addView(panel, new LinearLayout.LayoutParams(-1, Ui.dp(this, 262)));
         buildEditPage(pages.get(0));
         buildSpeedPage(pages.get(1));
@@ -320,6 +325,7 @@ public class VideoEditorActivity extends BaseActivity {
     private void showTab(int k) {
         if (k != curTab) toolItems.get(k).performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
         curTab = k;
+        toolChip.setText(getString(TAB_LABELS[k]).toUpperCase(java.util.Locale.getDefault()));
         for (int i = 0; i < scrolls.size(); i++) {
             scrolls.get(i).setVisibility(i == k ? View.VISIBLE : View.GONE);
             Ios.setToolSelected(this, toolItems.get(i), i == k);
@@ -1274,6 +1280,33 @@ public class VideoEditorActivity extends BaseActivity {
                 }
             }).start();
         });
+    }
+
+    private void showVideoMenu(View anchor) {
+        List<IosMenu.Item> it = new ArrayList<>();
+        it.add(new IosMenu.Item(R.string.save_frame, R.drawable.ic_image, false, this::saveFrame));
+        IosMenu.show(this, anchor, it);
+    }
+
+    /** "Save Video Frame as Photo": grabs the frame under the playhead and stores it in the library. */
+    private void saveFrame() {
+        final long posUs = player == null ? 0 : player.getCurrentPosition() * 1000L;
+        new Thread(() -> {
+            try {
+                android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+                r.setDataSource(this, media.uri);
+                android.graphics.Bitmap b = r.getFrameAtTime(posUs, android.media.MediaMetadataRetriever.OPTION_CLOSEST);
+                r.release();
+                if (b == null) throw new Exception("no frame");
+                MediaSaver.savePicture(this, b, false);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, R.string.frame_saved, Toast.LENGTH_SHORT).show();
+                    Library.reload(this);
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> Toast.makeText(this, R.string.error, Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private void askLeave() {

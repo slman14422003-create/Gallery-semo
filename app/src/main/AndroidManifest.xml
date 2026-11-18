@@ -18,6 +18,9 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- "Media management" special access: lets the app move photos to the bin without the system asking every time -->
+    <uses-permission android:name="android.permission.MANAGE_MEDIA" tools:ignore="ProtectedPermissions" />
+
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
         <queries>

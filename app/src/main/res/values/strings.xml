@@ -369,4 +369,11 @@
     <string name="sec_albums">الألبومات</string>
     <string name="select_items">حدد عناصر</string>
     <string name="deselect_all">إلغاء تحديد الكل</string>
+    <string name="mm_title">إيقاف رسالة التأكيد عند الحذف</string>
+    <string name="mm_msg">للحذف مباشرة بدون ظهور رسالة النظام في كل مرة، فعّل «إدارة الوسائط» لهذا التطبيق من الإعدادات. تبقى الصور المحذوفة في سلة المحذوفات لمدة 30 يوماً.</string>
+    <string name="mm_allow">فتح الإعدادات</string>
+    <string name="mm_later">ليس الآن</string>
+    <string name="revert_all">الرجوع للأصل</string>
+    <string name="save_frame">حفظ الإطار كصورة</string>
+    <string name="frame_saved">تم حفظ الصورة في المكتبة</string>
 </resources>

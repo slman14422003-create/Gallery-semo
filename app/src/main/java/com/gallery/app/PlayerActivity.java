@@ -178,6 +178,19 @@ public class PlayerActivity extends BaseActivity {
         return b;
     }
 
+    /** Icon with no background (sits inside a capsule). */
+    private ImageButton toolIconFlat(int icon, int desc, View.OnClickListener click) {
+        ImageButton b = new ImageButton(this);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        b.setBackground(null);
+        b.setContentDescription(getString(desc));
+        Ui.press(this, b);
+        b.setOnClickListener(click);
+        return b;
+    }
+
     private LinearLayout.LayoutParams toolLp() {
         return new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
     }
@@ -199,7 +212,7 @@ public class PlayerActivity extends BaseActivity {
         controls = new FrameLayout(this);
         root.addView(controls, new FrameLayout.LayoutParams(-1, -1));
 
-        // top: floating back button, title pill and engine chip (no full-width bar)
+        // top (iOS 26 Photos video): glass back circle, centred title pill, "..." circle with the menu
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
@@ -209,74 +222,74 @@ public class PlayerActivity extends BaseActivity {
         titleTv = new TextView(this);
         titleTv.setTextColor(Color.WHITE);
         titleTv.setTextSize(15);
+        titleTv.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD));
         titleTv.setSingleLine(true);
         titleTv.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-        titleTv.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 16), 0);
-        titleTv.setGravity(Gravity.CENTER_VERTICAL);
-        titleTv.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
+        titleTv.setPadding(Ui.dp(this, 18), 0, Ui.dp(this, 18), 0);
+        titleTv.setGravity(Gravity.CENTER);
         GradientDrawable tg = new GradientDrawable();
         tg.setCornerRadius(Ui.dp(this, 23));
         tg.setColor(0x66000000);
+        tg.setStroke(Math.max(1, Ui.dp(this, 1) / 2), 0x33FFFFFF);
         titleTv.setBackground(tg);
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, Ui.dp(this, 46), 1f);
-        tlp.setMargins(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
+        tlp.setMargins(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
         topBar.addView(titleTv, tlp);
-        engineTv = new TextView(this);
-        engineTv.setTextColor(Color.WHITE);
-        engineTv.setTextSize(12);
-        engineTv.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        engineTv.setGravity(Gravity.CENTER);
-        GradientDrawable eg = new GradientDrawable();
-        eg.setCornerRadius(Ui.dp(this, 23));
-        eg.setColor(Ui.color(this, R.color.accent));
-        engineTv.setBackground(eg);
-        engineTv.setPadding(Ui.dp(this, 14), 0, Ui.dp(this, 14), 0);
-        engineTv.setOnClickListener(v -> toggleEngine());
-        topBar.addView(engineTv, new LinearLayout.LayoutParams(-2, Ui.dp(this, 46)));
+        engineTv = new TextView(this);                  // kept for engine.name(); the engine switch now lives in the "..." menu
+        ImageButton moreTop = glass(R.drawable.ic_more, R.string.t_more, 0x66000000);
+        moreTop.setOnClickListener(v -> showMore(v));
+        topBar.addView(moreTop, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
         controls.addView(topBar, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
 
-        // center transport
+        // centre: previous / back 10 / forward 10 / next (play lives in the bottom capsule)
         centerBar = new LinearLayout(this);
         centerBar.setOrientation(LinearLayout.HORIZONTAL);
         centerBar.setGravity(Gravity.CENTER);
         centerBar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         ImageButton prev = glass(R.drawable.ic_skip_prev, R.string.prev, 0x55000000);
         ImageButton rew = glass(R.drawable.ic_rewind, R.string.back10, 0x55000000);
-        playBtn = glass(R.drawable.ic_play_fill, R.string.play, Ui.color(this, R.color.accent));
         ImageButton fwd = glass(R.drawable.ic_forward, R.string.fwd10, 0x55000000);
         ImageButton next = glass(R.drawable.ic_skip_next, R.string.next, 0x55000000);
         prev.setOnClickListener(v -> step(-1));
         next.setOnClickListener(v -> step(1));
         rew.setOnClickListener(v -> skip(-10_000));
         fwd.setOnClickListener(v -> skip(10_000));
-        playBtn.setOnClickListener(v -> togglePlay());
-        int[] sizes = {46, 52, 78, 52, 46};
-        ImageButton[] tb = {prev, rew, playBtn, fwd, next};
+        int[] sizes = {46, 56, 56, 46};
+        ImageButton[] tb = {prev, rew, fwd, next};
         for (int i = 0; i < tb.length; i++) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, sizes[i]), Ui.dp(this, sizes[i]));
-            lp.setMargins(Ui.dp(this, 7), 0, Ui.dp(this, 7), 0);
+            lp.setMargins(Ui.dp(this, 9), 0, Ui.dp(this, 9), 0);
             centerBar.addView(tb[i], lp);
         }
         controls.addView(centerBar, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 
-        // bottom: one rounded card with the seek bar and the tool row
+        // bottom: a capsule (play, seek bar, subtitles, audio) with the tool row under it, like the iOS video controls
         bottomBar = new LinearLayout(this);
         bottomBar.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout cap = new LinearLayout(this);
+        cap.setGravity(Gravity.CENTER_VERTICAL);
+        cap.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        cap.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
         GradientDrawable cg = new GradientDrawable();
-        cg.setCornerRadius(Ui.dp(this, 30));
-        cg.setColor(0xCC0C1016);
-        cg.setStroke(Ui.dp(this, 1), 0x26FFFFFF);
-        bottomBar.setBackground(cg);
-        LinearLayout sr = new LinearLayout(this);
-        sr.setGravity(Gravity.CENTER_VERTICAL);
-        sr.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        cg.setCornerRadius(Ui.dp(this, 32));
+        cg.setColor(0x88000000);
+        cg.setStroke(Math.max(1, Ui.dp(this, 1) / 2), 0x33FFFFFF);
+        cap.setBackground(cg);
+        playBtn = new ImageButton(this);
+        playBtn.setImageResource(R.drawable.ic_play_fill);
+        playBtn.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        playBtn.setScaleType(ImageView.ScaleType.CENTER);
+        playBtn.setBackground(null);
+        playBtn.setContentDescription(getString(R.string.play));
+        Ui.press(this, playBtn);
+        playBtn.setOnClickListener(v -> togglePlay());
         curTv = timeText();
         durTv = timeText();
         seek = new SeekBar(this);
         seek.setMax(1000);
-        seek.setProgressTintList(ColorStateList.valueOf(Ui.color(this, R.color.accent)));
+        seek.setProgressTintList(ColorStateList.valueOf(Color.WHITE));
         seek.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
-        seek.setProgressBackgroundTintList(ColorStateList.valueOf(0x44FFFFFF));
+        seek.setProgressBackgroundTintList(ColorStateList.valueOf(0x55FFFFFF));
         seek.setSecondaryProgressTintList(ColorStateList.valueOf(0x44FFFFFF));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -297,16 +310,30 @@ public class PlayerActivity extends BaseActivity {
                 scheduleHide();
             }
         });
-        sr.addView(curTv);
-        sr.addView(seek, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
-        sr.addView(durTv);
-        bottomBar.addView(sr);
+        cap.addView(playBtn, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
+        cap.addView(curTv);
+        cap.addView(seek, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
+        cap.addView(durTv);
+        cap.addView(toolIconFlat(R.drawable.ic_subtitle, R.string.t_subs, v -> pickSubs()), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 46)));
+        cap.addView(toolIconFlat(R.drawable.ic_music, R.string.t_audio, v -> pickAudio()), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 46)));
+        bottomBar.addView(cap, new LinearLayout.LayoutParams(-1, Ui.dp(this, 58)));
 
         LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.HORIZONTAL);
-        tools.setGravity(Gravity.CENTER);
+        tools.setGravity(Gravity.CENTER_VERTICAL);
         tools.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        tools.addView(toolIcon(R.drawable.ic_lock, R.string.t_lock, v -> setLocked(true)), toolLp());
+        ImageButton lockBtn = glass(R.drawable.ic_lock, R.string.t_lock, 0x88000000);
+        lockBtn.setOnClickListener(v -> setLocked(true));
+        tools.addView(lockBtn, new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
+        tools.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        LinearLayout mid = new LinearLayout(this);
+        mid.setGravity(Gravity.CENTER_VERTICAL);
+        mid.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
+        GradientDrawable mg = new GradientDrawable();
+        mg.setCornerRadius(Ui.dp(this, 30));
+        mg.setColor(0x88000000);
+        mg.setStroke(Math.max(1, Ui.dp(this, 1) / 2), 0x33FFFFFF);
+        mid.setBackground(mg);
         speedBtn = new TextView(this);
         speedBtn.setText("1×");
         speedBtn.setTextColor(Color.WHITE);
@@ -314,16 +341,21 @@ public class PlayerActivity extends BaseActivity {
         speedBtn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         speedBtn.setGravity(Gravity.CENTER);
         speedBtn.setContentDescription(getString(R.string.t_speed));
-        speedBtn.setBackgroundResource(R.drawable.bg_tile_round);
         Ui.press(this, speedBtn);
         speedBtn.setOnClickListener(v -> pickSpeed());
-        tools.addView(speedBtn, toolLp());
-        tools.addView(toolIcon(R.drawable.ic_aspect, R.string.t_aspect, v -> cycleAspect()), toolLp());
-        tools.addView(toolIcon(R.drawable.ic_rotate, R.string.t_rotate, v -> cycleOrientation()), toolLp());
-        tools.addView(toolIcon(R.drawable.ic_music, R.string.t_audio, v -> pickAudio()), toolLp());
-        tools.addView(toolIcon(R.drawable.ic_subtitle, R.string.t_subs, v -> pickSubs()), toolLp());
-        tools.addView(toolIcon(R.drawable.ic_more, R.string.t_more, v -> showMore()), toolLp());
-        bottomBar.addView(tools);
+        mid.addView(speedBtn, new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
+        mid.addView(toolIconFlat(R.drawable.ic_aspect, R.string.t_aspect, v -> cycleAspect()), new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
+        mid.addView(toolIconFlat(R.drawable.ic_rotate, R.string.t_rotate, v -> cycleOrientation()), new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
+        tools.addView(mid, new LinearLayout.LayoutParams(-2, Ui.dp(this, 54)));
+        tools.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        ImageButton shareBtn = glass(R.drawable.ic_share, R.string.share, 0x88000000);
+        shareBtn.setOnClickListener(v -> {
+            if (!playlist.isEmpty()) Actions.share(this, java.util.Collections.singletonList(playlist.get(idx)));
+        });
+        tools.addView(shareBtn, new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
+        LinearLayout.LayoutParams toolsLp = new LinearLayout.LayoutParams(-1, -2);
+        toolsLp.topMargin = Ui.dp(this, 10);
+        bottomBar.addView(tools, toolsLp);
         controls.addView(bottomBar, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
         hud = new TextView(this);
@@ -363,7 +395,7 @@ public class PlayerActivity extends BaseActivity {
             FrameLayout.LayoutParams bp = (FrameLayout.LayoutParams) bottomBar.getLayoutParams();
             bp.setMargins(Ui.dp(this, 12) + b.left, 0, Ui.dp(this, 12) + b.right, Ui.dp(this, 12) + b.bottom);
             bottomBar.setLayoutParams(bp);
-            bottomBar.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
+            bottomBar.setPadding(0, 0, 0, 0);
             return insets;
         });
     }
@@ -1095,16 +1127,17 @@ public class PlayerActivity extends BaseActivity {
         hudShow(getString(orient == 0 ? R.string.rot_auto : orient == 1 ? R.string.rot_land : R.string.rot_port));
     }
 
-    private void showMore() {
-        String[] items = {(loop ? "● " : "○ ") + getString(R.string.t_loop), getString(R.string.t_pip), getString(R.string.info)};
-        new Dlg(this).setTitle(R.string.t_more).setItems(items, (d, w) -> {
-            if (w == 0) {
-                loop = !loop;
-                engine.setLooping(loop);
-                hudShow(getString(loop ? R.string.loop_on : R.string.loop_off));
-            } else if (w == 1) enterPip();
-            else InfoSheet.show(this, playlist.get(idx));
-        }).show();
+    private void showMore(View anchor) {
+        List<IosMenu.Item> items = new ArrayList<>();
+        items.add(new IosMenu.Item(loop ? R.string.loop_on : R.string.t_loop, R.drawable.ic_refresh, false, () -> {
+            loop = !loop;
+            engine.setLooping(loop);
+            hudShow(getString(loop ? R.string.loop_on : R.string.loop_off));
+        }));
+        items.add(new IosMenu.Item(R.string.t_pip, R.drawable.ic_play, false, this::enterPip));
+        items.add(new IosMenu.Item(R.string.info, R.drawable.ic_info, false, () -> InfoSheet.show(this, playlist.get(idx))));
+        items.add(new IosMenu.Item(R.string.set_engine, R.drawable.ic_play_fill, false, this::toggleEngine));
+        IosMenu.show(this, anchor, items);
     }
 
     private void pickAudio() {

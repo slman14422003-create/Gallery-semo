@@ -61,7 +61,7 @@ import java.util.List;
  */
 public class ViewerActivity extends BaseActivity {
     private static final ArgbEvaluator ARGB = new ArgbEvaluator();
-    private static final int TOP_BAR_DP = 52, STRIP_DP = 52, TOOLBAR_DP = 50, STRIP_H_DP = 42, STRIP_NARROW_DP = 16;
+    private static final int TOP_BAR_DP = 60, STRIP_DP = 52, TOOLBAR_DP = 68, STRIP_H_DP = 42, STRIP_NARROW_DP = 16;
 
     private final List<Media> list = new ArrayList<>();
     private ViewPager2 pager;
@@ -278,20 +278,33 @@ public class ViewerActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ building
 
+    /** A button on a round glass disc (iOS 26 style). */
+    private View glassCircle(ImageButton btn, int sizeDp) {
+        btn.setBackground(null);
+        View g = Glass.wrap(this, blurTarget, btn, -1, Glass.overlay(this), new FrameLayout.LayoutParams(-1, -1));
+        g.setElevation(Ui.dp(this, 6));
+        g.setLayoutParams(new FrameLayout.LayoutParams(Ui.dp(this, sizeDp), Ui.dp(this, sizeDp)));
+        return g;
+    }
+
     private void buildTopBar(FrameLayout root) {
         topBar = new FrameLayout(this);
         topBar.setBackgroundColor((viewerBg & 0x00FFFFFF) | 0xF2000000);
 
+        // back: glass circle on the left
         ImageButton back = circleButton(R.drawable.ic_chevron, R.string.back);
         back.setRotation(180f);
         back.setOnClickListener(v -> closeViewer());
-        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.START | Gravity.CENTER_VERTICAL);
-        bp.setMarginStart(Ui.dp(this, 14));
-        topBar.addView(back, bp);
+        View backG = glassCircle(back, 44);
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44), Gravity.START | Gravity.CENTER_VERTICAL);
+        bp.setMarginStart(Ui.dp(this, 16));
+        topBar.addView(backG, bp);
 
+        // centre: glass capsule with the date and the time under it
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setGravity(Gravity.CENTER_HORIZONTAL);
+        titles.setGravity(Gravity.CENTER);
+        titles.setPadding(Ui.dp(this, 22), Ui.dp(this, 4), Ui.dp(this, 22), Ui.dp(this, 4));
         titleTv = new TextView(this);
         titleTv.setTextColor(Ui.color(this, R.color.text_primary));
         titleTv.setTextSize(15f);
@@ -300,39 +313,23 @@ public class ViewerActivity extends BaseActivity {
         titleTv.setGravity(Gravity.CENTER);
         subTv = new TextView(this);
         subTv.setTextColor(Ui.color(this, R.color.text_secondary));
-        subTv.setTextSize(12f);
+        subTv.setTextSize(11.5f);
         subTv.setSingleLine(true);
         subTv.setGravity(Gravity.CENTER);
         titles.addView(titleTv);
         titles.addView(subTv);
-        topBar.addView(titles, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        View pillG = Glass.wrap(this, blurTarget, titles, -1, Glass.overlay(this), new FrameLayout.LayoutParams(-2, -1));
+        pillG.setElevation(Ui.dp(this, 6));
+        topBar.addView(pillG, new FrameLayout.LayoutParams(-2, Ui.dp(this, 46), Gravity.CENTER));
 
-        LinearLayout right = new LinearLayout(this);
-        right.setOrientation(LinearLayout.HORIZONTAL);
-        right.setGravity(Gravity.CENTER_VERTICAL);
-        TextView edit = new TextView(this);
-        edit.setText(R.string.edit);
-        edit.setTextSize(17f);
-        edit.setTextColor(ink);
-        edit.setGravity(Gravity.CENTER);
-        edit.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
-        edit.setContentDescription(getString(R.string.edit));
-        Ui.press(this, edit);
-        edit.setOnClickListener(v -> {
-            if (live) exitLive();
-            editing = true;
-            Actions.edit(this, cur());
-        });
-        right.addView(edit, new LinearLayout.LayoutParams(-2, Ui.dp(this, 40)));
+        // right: one "..." circle (Edit, Live Text, Slideshow live inside it)
         final ImageButton more = circleButton(R.drawable.ic_more, R.string.view_options);
         moreBtn = more;
         more.setOnClickListener(v -> showMore());
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40));
-        mp.setMarginStart(Ui.dp(this, 2));
-        right.addView(more, mp);
-        FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL);
-        rp.setMarginEnd(Ui.dp(this, 10));
-        topBar.addView(right, rp);
+        View moreG = glassCircle(more, 44);
+        FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44), Gravity.END | Gravity.CENTER_VERTICAL);
+        rp.setMarginEnd(Ui.dp(this, 16));
+        topBar.addView(moreG, rp);
 
         root.addView(topBar, new FrameLayout.LayoutParams(-1, Ui.dp(this, TOP_BAR_DP), Gravity.TOP));
     }
@@ -399,15 +396,31 @@ public class ViewerActivity extends BaseActivity {
         toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(Ui.dp(this, 8), 0, Ui.dp(this, 8), 0);
-        toolbar.addView(toolButton(R.drawable.ic_share, R.string.share, v -> Actions.share(this, java.util.Collections.singletonList(cur()))),
-                new LinearLayout.LayoutParams(0, -1, 1f));
+        toolbar.setPadding(Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 6));
+        toolbar.setClipChildren(false);
+        // share: glass circle on the left
+        View shareG = glassCircle(toolButton(R.drawable.ic_share, R.string.share,
+                v -> Actions.share(this, java.util.Collections.singletonList(cur()))), 52);
+        toolbar.addView(shareG, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
+        toolbar.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        // middle: glass capsule with heart, info and edit (sliders)
+        LinearLayout mid = new LinearLayout(this);
+        mid.setOrientation(LinearLayout.HORIZONTAL);
+        mid.setGravity(Gravity.CENTER_VERTICAL);
+        mid.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
         favBtn = toolButton(R.drawable.ic_heart, R.string.favorite, v -> toggleFav());
-        toolbar.addView(favBtn, new LinearLayout.LayoutParams(0, -1, 1f));
-        toolbar.addView(toolButton(R.drawable.ic_info, R.string.info, v -> InfoSheet.show(this, cur())),
-                new LinearLayout.LayoutParams(0, -1, 1f));
-        toolbar.addView(toolButton(R.drawable.ic_delete, R.string.delete, v -> deleteCurrent()),
-                new LinearLayout.LayoutParams(0, -1, 1f));
+        mid.addView(favBtn, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
+        mid.addView(toolButton(R.drawable.ic_info, R.string.info, v -> InfoSheet.show(this, cur())),
+                new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
+        mid.addView(toolButton(R.drawable.ic_sliders, R.string.edit, v -> openEditor()),
+                new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
+        View midG = Glass.wrap(this, blurTarget, mid, -1, Glass.overlay(this), new FrameLayout.LayoutParams(-2, -1));
+        midG.setElevation(Ui.dp(this, 6));
+        toolbar.addView(midG, new LinearLayout.LayoutParams(-2, Ui.dp(this, 52)));
+        toolbar.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+        // delete: glass circle on the right
+        View delG = glassCircle(toolButton(R.drawable.ic_delete, R.string.delete, v -> deleteCurrent()), 52);
+        toolbar.addView(delG, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
         toolbar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         bottomPanel.addView(toolbar, new LinearLayout.LayoutParams(-1, Ui.dp(this, TOOLBAR_DP)));
         root.addView(bottomPanel, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
@@ -914,12 +927,20 @@ public class ViewerActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ more menu
 
+    private void openEditor() {
+        if (live) exitLive();
+        editing = true;
+        Actions.edit(this, cur());
+    }
+
     private void showMore() {
         if (popup != null && popup.isShowing()) {
             popup.dismiss();
             return;
         }
         List<IosMenu.Item> items = new ArrayList<>();
+        items.add(new IosMenu.Item(R.string.edit, R.drawable.ic_sliders, false, this::openEditor));
+        items.add(new IosMenu.Item(R.string.info, R.drawable.ic_info, false, () -> InfoSheet.show(this, cur())));
         if (!cur().video) items.add(new IosMenu.Item(R.string.live_text, R.drawable.ic_live_text, false, this::toggleLive));
         if (list.size() > 1) items.add(new IosMenu.Item(R.string.slideshow, R.drawable.ic_play, false, this::startSlideshow));
         popup = IosMenu.show(this, moreBtn, items);

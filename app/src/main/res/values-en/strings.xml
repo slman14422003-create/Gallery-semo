@@ -365,4 +365,11 @@
     <string name="sec_albums">Albums</string>
     <string name="select_items">Select Items</string>
     <string name="deselect_all">Deselect All</string>
+    <string name="mm_title">Stop the delete confirmation</string>
+    <string name="mm_msg">To delete without the system asking every time, turn on "Media management" for this app in Settings. Deleted photos still stay in the bin for 30 days.</string>
+    <string name="mm_allow">Open Settings</string>
+    <string name="mm_later">Not now</string>
+    <string name="revert_all">Revert to Original</string>
+    <string name="save_frame">Save Video Frame as Photo</string>
+    <string name="frame_saved">Photo saved to your library</string>
 </resources>

@@ -65,7 +65,8 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private FrameLayout panel;
     private int tab = -1;
     private ImageButton undoBtn, redoBtn;
-    private TextView saveBtn;
+    private TextView saveBtn, toolChip;
+    private static final int[] TAB_NAMES = {R.string.tab_crop, R.string.tab_adjust, R.string.tab_filters, R.string.tab_draw, R.string.tab_text};
     private boolean saving = false;
     private int brushColor = COLORS[0];
     private float brushW = 0.012f;
@@ -124,32 +125,19 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         root.setBackgroundColor(Ui.color(this, R.color.bg));
         setContentView(root);
 
-        LinearLayout head = new LinearLayout(this);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
-        LinearLayout left = new LinearLayout(this);
-        left.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        // iOS 26 Photos editor top: [Cancel .. Done] over [undo/redo | TOOL NAME | ...]
         TextView cancel = Ios.navText(this, getString(R.string.cancel), false);
         cancel.setOnClickListener(v -> onBackPressedDispatcher());
-        left.addView(cancel);
-        head.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
-        LinearLayout mid = new LinearLayout(this);
-        mid.setGravity(Gravity.CENTER);
-        mid.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        undoBtn = Ios.navIcon(this, R.drawable.ic_undo, R.string.undo, v -> undo());
-        undoBtn.setAlpha(0.35f);
-        redoBtn = Ios.navIcon(this, R.drawable.ic_redo, R.string.redo, v -> redo());
-        redoBtn.setAlpha(0.35f);
-        mid.addView(undoBtn, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
-        mid.addView(redoBtn, new LinearLayout.LayoutParams(Ui.dp(this, 44), Ui.dp(this, 44)));
-        head.addView(mid, new LinearLayout.LayoutParams(-2, -2));
-        LinearLayout right = new LinearLayout(this);
-        right.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         saveBtn = Ios.navText(this, getString(R.string.done), true);
         saveBtn.setOnClickListener(v -> save());
-        right.addView(saveBtn);
-        head.addView(right, new LinearLayout.LayoutParams(0, -2, 1f));
-        root.addView(head, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
+        undoBtn = Ios.flatIcon(this, R.drawable.ic_undo, R.string.undo, v -> undo());
+        redoBtn = Ios.flatIcon(this, R.drawable.ic_redo, R.string.redo, v -> redo());
+        undoBtn.setAlpha(0.35f);
+        redoBtn.setAlpha(0.35f);
+        toolChip = Ios.chip(this, getString(TAB_NAMES[1]));
+        ImageButton moreBtn = Ios.flatIcon(this, R.drawable.ic_more, R.string.view_options, v -> showEditMenu(v));
+        root.addView(Ios.topArea(this, cancel, saveBtn, Ios.capsule(this, undoBtn, redoBtn), toolChip, Ios.capsule(this, moreBtn)),
+                new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout canvasBox = new FrameLayout(this);
         canvasBox.setBackgroundColor(Ui.color(this, R.color.bg_group));
@@ -165,10 +153,10 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         panel.setMinimumHeight(Ui.dp(this, 168));
         root.addView(panel, new LinearLayout.LayoutParams(-1, -2));
 
-        root.addView(Ios.hairline(this));
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(Ui.dp(this, 8), Ui.dp(this, 2), Ui.dp(this, 8), Ui.dp(this, 2));
+        bar.setPadding(Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4));
+        Ios.floatingBar(this, bar);
         int[] icons = {R.drawable.ic_crop, R.drawable.ic_adjust, R.drawable.ic_palette, R.drawable.ic_brush, R.drawable.ic_text};
         int[] names = {R.string.tab_crop, R.string.tab_adjust, R.string.tab_filters, R.string.tab_draw, R.string.tab_text};
         for (int i = 0; i < 5; i++) {
@@ -178,7 +166,9 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
             tabViews[i] = it;
             bar.addView(it, new LinearLayout.LayoutParams(0, -2, 1f));
         }
-        root.addView(bar, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, -2);
+        barLp.setMargins(Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 12));
+        root.addView(bar, barLp);
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -363,6 +353,22 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         redoBtn.setAlpha(redo.isEmpty() ? 0.35f : 1f);
     }
 
+    private void showEditMenu(View anchor) {
+        List<IosMenu.Item> it = new ArrayList<>();
+        it.add(new IosMenu.Item(R.string.undo, R.drawable.ic_undo, false, this::undo));
+        it.add(new IosMenu.Item(R.string.redo, R.drawable.ic_redo, false, this::redo));
+        it.add(new IosMenu.Item(R.string.revert_all, R.drawable.ic_refresh, true, this::revertAll));
+        IosMenu.show(this, anchor, it);
+    }
+
+    private void revertAll() {
+        if (!st.changed()) return;
+        push();
+        st = new EditState();
+        syncHistoryButtons();
+        selectTab(tab);
+    }
+
     private void undo() {
         if (undo.isEmpty()) return;
         redo.add(st.copy());
@@ -401,6 +407,7 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
         if (tab >= 0 && idx != tab && tabViews[idx] != null) tabViews[idx].performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
         tab = idx;
         for (int i = 0; i < 5; i++) Ios.setToolSelected(this, tabViews[i], i == idx);
+        toolChip.setText(getString(TAB_NAMES[idx]).toUpperCase(java.util.Locale.getDefault()));
         ev.setGrid(false);
         ev.setMode(idx == 0 ? EditorView.CROP : idx == 3 ? EditorView.DRAW : idx == 4 ? EditorView.TEXT : EditorView.NONE);
         ev.setBrush(brushColor, brushW);
