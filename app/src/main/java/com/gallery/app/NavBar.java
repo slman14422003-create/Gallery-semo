@@ -5,11 +5,14 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -49,7 +52,11 @@ final class NavBar {
     private final View[] items = new View[COUNT];
     private final ImageView[] icons = new ImageView[COUNT];
     private final TextView[] names = new TextView[TABS];
-    private final Drawable[] pills = new Drawable[TABS];
+    private View thumb;                 // the one highlight capsule; press and drag it between the tabs
+    private boolean touching, dragging, thumbAnimating;
+    private int downIdx = -1, previewIdx = -1;
+    private float downX, thumbMin, thumbMax;
+    private final int slop;
     private int selected = -1;
     private ValueAnimator anim;
     private Reselect reselect;
@@ -63,6 +70,7 @@ final class NavBar {
         this.a = a;
         this.cb = cb;
         this.target = target;
+        this.slop = ViewConfiguration.get(a).getScaledTouchSlop();
     }
 
     static NavBar attach(Activity a, int selected, Callback cb) {
@@ -125,18 +133,20 @@ final class NavBar {
             capsule.setBackgroundResource(R.drawable.bg_nav_float);
         }
         capsule.setElevation(Ui.dp(a, 10));
+        thumb = new View(a);
+        thumb.setBackgroundResource(R.drawable.bg_nav_pill);
+        thumb.setAlpha(0f);
+        capsule.addView(thumb, new FrameLayout.LayoutParams(Ui.dp(a, 80), Ui.dp(a, 54), Gravity.LEFT | Gravity.TOP));
         capsule.addView(bar, new FrameLayout.LayoutParams(-1, -1));
         row.addView(capsule, new LinearLayout.LayoutParams(0, Ui.dp(a, 64), 1f));
+        bar.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> settleThumb());
+        capsule.setOnTouchListener(this::onCapsuleTouch);
 
         for (int i = 0; i < TABS; i++) {
-            final int idx = i;
             LinearLayout item = new LinearLayout(a);
             item.setOrientation(LinearLayout.VERTICAL);
             item.setGravity(Gravity.CENTER);
             item.setContentDescription(a.getString(labelRes[i]));
-            item.setBackgroundResource(R.drawable.bg_nav_pill);
-            pills[i] = item.getBackground().mutate();
-            pills[i].setAlpha(0);
 
             ImageView icon = new ImageView(a);
             icon.setImageResource(iconRes[i]);
@@ -155,7 +165,7 @@ final class NavBar {
             tp.topMargin = Ui.dp(a, 2);
             item.addView(t, tp);
 
-            hook(item, idx);
+            // taps and drags on the tabs are handled by the capsule (see onCapsuleTouch)
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
             lp.setMargins(Ui.dp(a, 2), 0, Ui.dp(a, 2), 0);
             bar.addView(item, lp);
@@ -209,18 +219,23 @@ final class NavBar {
         if (anim != null) anim.cancel();
         for (int i = 0; i < COUNT; i++) items[i].setSelected(i == sel);
         animate = animate && bar.isLaidOut();
-        if (!animate || from < 0) {
-            paint(from, sel, 1f);
+        moveThumb(from, sel, animate);
+        // if the finger previewed a tab while dragging, the tint already shows it: continue from there
+        int tintFrom = previewIdx >= 0 ? previewIdx : from;
+        previewIdx = -1;
+        if (!animate || tintFrom < 0 || tintFrom == sel) {
+            paint(-1, sel, 1f);
             return;
         }
+        final int tf = tintFrom;
         anim = ValueAnimator.ofFloat(0f, 1f);
         anim.setDuration(DURATION);
         anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
-        anim.addUpdateListener(v -> paint(from, sel, (float) v.getAnimatedValue()));
+        anim.addUpdateListener(v -> paint(tf, sel, (float) v.getAnimatedValue()));
         anim.start();
     }
 
-    /** t = 0..1 cross-fades the highlight and the tint from tab {@code from} to tab {@code to}. */
+    /** t = 0..1 cross-fades the tint from tab {@code from} to tab {@code to}. */
     private void paint(int from, int to, float t) {
         int on = Ui.color(a, R.color.accent);
         int off = Ui.color(a, R.color.text_secondary);
@@ -228,10 +243,166 @@ final class NavBar {
             float k = i == to ? t : i == from ? 1f - t : 0f;
             int col = (Integer) ARGB.evaluate(k, off, on);
             icons[i].setImageTintList(ColorStateList.valueOf(col));
-            if (i < TABS) {
-                pills[i].setAlpha(Math.round(255f * k));
-                names[i].setTextColor(col);
+            if (i < TABS) names[i].setTextColor(col);
+        }
+    }
+
+    // ------------------------------------------------------------------ the draggable highlight
+
+    private void sizeThumb(View it) {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) thumb.getLayoutParams();
+        if (lp.width != it.getWidth() || lp.height != it.getHeight()) {
+            lp.width = it.getWidth();
+            lp.height = it.getHeight();
+            thumb.setLayoutParams(lp);
+        }
+        thumb.setTranslationY(it.getTop());
+        float lo = Float.MAX_VALUE, hi = -Float.MAX_VALUE;
+        for (int i = 0; i < TABS; i++) {
+            lo = Math.min(lo, items[i].getLeft());
+            hi = Math.max(hi, items[i].getLeft());
+        }
+        thumbMin = lo;
+        thumbMax = hi;
+    }
+
+    /** Puts the highlight under the selected tab without animation (first layout, rotation). */
+    private void settleThumb() {
+        if (touching || thumbAnimating) return;
+        View ref = items[selected >= 0 && selected < TABS ? selected : 0];
+        if (ref.getWidth() == 0) return;
+        sizeThumb(ref);
+        if (selected >= 0 && selected < TABS) thumb.setTranslationX(ref.getLeft());
+    }
+
+    private void moveThumb(int from, int to, boolean animate) {
+        thumb.animate().cancel();
+        thumbAnimating = false;
+        if (to < 0 || to >= TABS) {                      // search is selected: the highlight fades away
+            if (animate) thumb.animate().alpha(0f).scaleX(1f).scaleY(1f).setDuration(160).start();
+            else {
+                thumb.setAlpha(0f);
+                thumb.setScaleX(1f);
+                thumb.setScaleY(1f);
             }
+            return;
+        }
+        View it = items[to];
+        if (it.getWidth() == 0) return;                  // not laid out yet: settleThumb() will place it
+        sizeThumb(it);
+        float tx = it.getLeft();
+        boolean wasShown = thumb.getAlpha() > 0.5f;
+        if (!animate) {
+            thumb.setTranslationX(tx);
+            thumb.setAlpha(1f);
+            thumb.setScaleX(1f);
+            thumb.setScaleY(1f);
+            return;
+        }
+        if (!wasShown) {
+            thumb.setTranslationX(tx);                   // coming from search: fade in on the spot
+            thumb.setAlpha(0f);
+            thumb.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start();
+            return;
+        }
+        thumbAnimating = true;
+        thumb.animate().translationX(tx).alpha(1f).scaleX(1f).scaleY(1f).setDuration(380)
+                .setInterpolator(new OvershootInterpolator(0.9f))
+                .withEndAction(() -> thumbAnimating = false).start();
+    }
+
+    private void lift(boolean up) {
+        thumb.animate().scaleX(up ? 1.08f : 1f).scaleY(up ? 1.1f : 1f).setDuration(up ? 160 : 260)
+                .setInterpolator(new DecelerateInterpolator(1.5f)).start();
+    }
+
+    private int indexAt(float centerX) {
+        int best = 0;
+        float bd = Float.MAX_VALUE;
+        for (int i = 0; i < TABS; i++) {
+            float d = Math.abs(centerX - (items[i].getLeft() + items[i].getWidth() / 2f));
+            if (d < bd) {
+                bd = d;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * iOS 26 tab bar: a tap picks a tab; pressing and dragging lifts the highlight and slides it under the
+     * finger, the tab under it lights up, and letting go settles it on the nearest tab.
+     */
+    private boolean onCapsuleTouch(View v, MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                if (items[0].getWidth() == 0) return false;
+                touching = true;
+                dragging = false;
+                downX = e.getX();
+                downIdx = indexAt(downX);
+                if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
+                if (selected >= 0 && selected < TABS) {
+                    thumb.animate().cancel();
+                    thumbAnimating = false;
+                    lift(true);
+                }
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                if (!touching) return false;
+                float x = e.getX();
+                if (!dragging && Math.abs(x - downX) > slop) {
+                    dragging = true;
+                    sizeThumb(items[0]);
+                    thumb.animate().cancel();
+                    thumbAnimating = false;
+                    if (thumb.getAlpha() < 0.5f) {      // search was selected: the highlight appears under the finger
+                        thumb.setTranslationX(Math.max(thumbMin, Math.min(thumbMax, x - thumb.getWidth() / 2f)));
+                    }
+                    thumb.animate().alpha(1f).scaleX(1.08f).scaleY(1.1f).setDuration(140).start();
+                }
+                if (dragging) {
+                    float tx = Math.max(thumbMin, Math.min(thumbMax, x - thumb.getWidth() / 2f));
+                    thumb.setTranslationX(tx);
+                    int idx = indexAt(tx + thumb.getWidth() / 2f);
+                    if (idx != previewIdx) {
+                        previewIdx = idx;
+                        paint(-1, idx, 1f);
+                        v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                    }
+                }
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                if (!touching) return false;
+                boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
+                boolean wasDrag = dragging;
+                touching = false;
+                dragging = false;
+                int target = cancel ? selected
+                        : wasDrag ? indexAt(thumb.getTranslationX() + thumb.getWidth() / 2f) : downIdx;
+                if (!cancel && !wasDrag) v.performClick();
+                if (target < 0 || target >= TABS || target == selected) {
+                    previewIdx = -1;
+                    if (selected >= 0) paint(-1, selected, 1f);
+                    if (selected >= 0 && selected < TABS) {
+                        moveThumb(selected, selected, true);
+                        if (!cancel && !wasDrag && target == selected && reselect != null) reselect.onReselect(target);
+                    }
+                    return true;
+                }
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                cb.onTab(target);                       // render() then slides the highlight the rest of the way
+                if (selected != target) {                // the screen refused: go back
+                    previewIdx = -1;
+                    if (selected >= 0) paint(-1, selected, 1f);
+                    if (selected >= 0 && selected < TABS) moveThumb(selected, selected, true);
+                }
+                return true;
+            }
+            default:
+                return false;
         }
     }
 

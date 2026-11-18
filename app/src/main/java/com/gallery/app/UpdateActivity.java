@@ -43,6 +43,7 @@ public class UpdateActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_detail);
         useGroupedBackground();
+        enableSwipeBack();
         ((TextView) findViewById(R.id.title)).setText(R.string.upd_title);
         updateSubtitle();
         findViewById(R.id.btnBack).setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());

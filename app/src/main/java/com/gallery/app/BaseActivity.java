@@ -8,6 +8,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.view.MotionEvent;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -39,9 +41,42 @@ public abstract class BaseActivity extends AppCompatActivity {
                 else Library.reload(this);
             });
 
+    private SwipeBack swipeBack;
+    private boolean groupedBg;
+
+    private boolean translucentTheme() {
+        android.util.TypedValue tv = new android.util.TypedValue();
+        return getTheme().resolveAttribute(android.R.attr.windowIsTranslucent, tv, true) && tv.data != 0;
+    }
+
     /** iOS "inset grouped" screens (settings, updates) sit on grey in day mode; the window follows so no white strip shows. */
     protected void useGroupedBackground() {
-        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Ui.color(this, R.color.bg_group)));
+        groupedBg = true;
+        // a translucent (swipe-back) screen paints its grey on the content instead, so the screen underneath can show through
+        if (!translucentTheme()) {
+            getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Ui.color(this, R.color.bg_group)));
+        }
+    }
+
+    /**
+     * iOS back swipe: drag from the screen edge to pop this screen. Call after setContentView(); the activity
+     * needs the translucent PushTheme. Screens can veto it (see {@link #canSwipeBack()}).
+     */
+    protected void enableSwipeBack() {
+        View content = findViewById(android.R.id.content);
+        if (content == null) return;
+        content.setBackgroundColor(Ui.color(this, groupedBg ? R.color.bg_group : R.color.bg));
+        swipeBack = new SwipeBack(this, content, this::canSwipeBack);
+    }
+
+    protected boolean canSwipeBack() {
+        return true;
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (swipeBack != null && swipeBack.intercept(ev)) return true;
+        return super.dispatchTouchEvent(ev);
     }
 
     @Override

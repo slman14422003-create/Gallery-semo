@@ -104,8 +104,16 @@ public class ImageEditorActivity extends BaseActivity implements EditorView.List
     private float ccl = -1f, cct, ccr, ccb;
 
     @Override
+    public void finish() {
+        super.finish();
+        Motion.legacy(this, R.anim.modal_close_enter, R.anim.modal_close_exit);
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // iOS modal: the editor rises from the bottom edge and drops back down when it closes
+        Motion.install(this, R.anim.modal_open_enter, R.anim.modal_open_exit, R.anim.modal_close_enter, R.anim.modal_close_exit);
         media = Library.editTarget;
         if (media == null || media.video) {
             finish();

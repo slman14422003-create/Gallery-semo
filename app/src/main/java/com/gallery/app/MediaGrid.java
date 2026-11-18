@@ -107,6 +107,14 @@ public class MediaGrid extends LinearLayout {
     private int rebuildGen;
     private Runnable onBack, onSelectChange;
     private final Runnable applyQuery = () -> rebuild();
+    private SelectionListener selListener;   // when set, the host shows the iOS-style selection bar instead of the built-in one
+    private View statusScrim;
+    private int topInset;
+
+    /** Reports selection mode and the number of selected items to the screen that owns the floating selection bar. */
+    public interface SelectionListener {
+        void onSelection(boolean selecting, int count);
+    }
 
     private void autoScrollStep() {
         if (!dragSelect || scrollDir == 0) return;
@@ -229,6 +237,12 @@ public class MediaGrid extends LinearLayout {
         });
         body.addView(rv, new FrameLayout.LayoutParams(-1, -1));
         body.addView(topBlock, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
+        // the photos run under the status bar like on iPhone; a soft fade keeps the clock and icons readable over them
+        statusScrim = new View(a);
+        int bgc = Ui.color(a, R.color.bg) & 0x00FFFFFF;
+        statusScrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{bgc | 0xCC000000, bgc}));
+        body.addView(statusScrim, new FrameLayout.LayoutParams(-1, 0, Gravity.TOP));
         scroller = new ScrollHeader(rv, topBlock, Ui.dp(a, 96));
 
         // pinch to change the column count
@@ -392,6 +406,33 @@ public class MediaGrid extends LinearLayout {
         navInsetPx = px;
         if (scroller != null) scroller.setBottom(Ui.dp(act, 96) + px);
         if (selBar != null) selBar.setPadding(0, 0, 0, px);
+    }
+
+    /** Height of the status bar / cutout: the header sits below it while the photos scroll up underneath it. */
+    public void setTopInset(int px) {
+        if (px == topInset) return;
+        topInset = px;
+        topBlock.setPadding(0, px, 0, 0);
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) statusScrim.getLayoutParams();
+        lp.height = px > 0 ? px + Ui.dp(act, 12) : 0;
+        statusScrim.setLayoutParams(lp);
+    }
+
+    public void setSelectionListener(SelectionListener l) {
+        selListener = l;
+        if (l != null && selBar != null) selBar.setVisibility(GONE);
+    }
+
+    public int selectedCount() {
+        return sel.size();
+    }
+
+    public void shareSelected() {
+        Actions.share(act, selected());
+    }
+
+    public void deleteSelected() {
+        act.trashOrDelete(selected(), this::exitSelect);
     }
 
     public void setTitle(String t) {
@@ -710,6 +751,10 @@ public class MediaGrid extends LinearLayout {
 
     /** Bottom bar: share, "N selected", delete. Slides up while selecting. */
     private void updateSelBar() {
+        if (selListener != null) {
+            selListener.onSelection(selecting, sel.size());
+            return;
+        }
         if (selBar == null) return;
         selBar.animate().cancel();
         if (selecting) {

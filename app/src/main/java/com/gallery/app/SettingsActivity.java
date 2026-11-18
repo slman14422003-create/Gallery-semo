@@ -17,14 +17,15 @@ public class SettingsActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_detail);
         useGroupedBackground();
+        enableSwipeBack();
         ((TextView) findViewById(R.id.title)).setText(R.string.settings);
         ((TextView) findViewById(R.id.subtitle)).setText(R.string.settings_sub);
-        findViewById(R.id.btnBack).setVisibility(View.GONE);
+        findViewById(R.id.btnBack).setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());   // pushed screen: back chevron like iOS
         findViewById(R.id.btnRefresh).setVisibility(View.GONE);
         content = findViewById(R.id.content);
         Ui.autoGroup(this, content);
         nav = NavBar.attach(this, NavBar.SETTINGS, this::goTab);
-        Motion.install(this, R.anim.tab_in, R.anim.tab_out, R.anim.tab_in, R.anim.tab_out);
+        Motion.install(this, R.anim.act_open_enter, R.anim.act_open_exit, R.anim.act_close_enter, R.anim.act_close_exit);
     }
 
     private void goTab(int idx) {
@@ -33,7 +34,7 @@ public class SettingsActivity extends BaseActivity {
         i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
         finish();
-        Motion.legacy(this, R.anim.tab_in, R.anim.tab_out);
+        Motion.legacy(this, R.anim.act_close_enter, R.anim.act_close_exit);
     }
 
     @Override

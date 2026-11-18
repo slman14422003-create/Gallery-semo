@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS modal presentation (editors): the sheet rises from the bottom edge -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false"
+    android:zAdjustment="top">
+    <translate
+        android:duration="420"
+        android:fromYDelta="100%"
+        android:interpolator="@android:interpolator/decelerate_quint"
+        android:toYDelta="0" />
+</set>

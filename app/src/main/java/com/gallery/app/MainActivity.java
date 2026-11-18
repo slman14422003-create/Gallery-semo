@@ -35,6 +35,7 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     private FrameLayout stage;
     private View permView;
     private NavBar nav;
+    private SelectBar selectBar;
     private BlurTarget blurTarget;
     private int navInset;
     private FrameLayout.LayoutParams camLp;
@@ -99,7 +100,9 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             Insets sb = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
             boolean kb = ime.bottom > sb.bottom;
-            v.setPadding(sb.left, sb.top, sb.right, kb ? ime.bottom : 0);
+            // no top padding: the photos run under the status bar (iPhone look); each screen pads its own header instead
+            v.setPadding(sb.left, 0, sb.right, kb ? ime.bottom : 0);
+            applyTopInset(sb.top);
             applyNavInset(kb ? 0 : sb.bottom);
             return WindowInsetsCompat.CONSUMED;
         });
@@ -118,11 +121,18 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         nav = NavBar.attach(this, NavBar.PHOTOS, blurTarget, idx -> {
             if (idx == NavBar.SETTINGS) {
                 startActivity(new Intent(this, SettingsActivity.class));
-                Motion.legacy(this, R.anim.tab_in, R.anim.tab_out);
+                Motion.legacy(this, R.anim.act_open_enter, R.anim.act_open_exit);
             } else {
                 showTab(idx);
             }
         });
+
+        // selecting: the tab bar slides away and the iPhone-style glass toolbar (share / N selected / delete) takes its place
+        selectBar = SelectBar.attach(this, root, blurTarget,
+                () -> { MediaGrid g = activeGrid(); if (g != null) g.shareSelected(); },
+                () -> { MediaGrid g = activeGrid(); if (g != null) g.deleteSelected(); });
+        photos.setSelectionListener(this::onSelection);
+        search.setSelectionListener(this::onSelection);
 
         if (nav != null) {
             nav.setOnReselect(idx -> {
@@ -187,10 +197,27 @@ public class MainActivity extends BaseActivity implements Library.Listener {
         }
     }
 
+    private MediaGrid activeGrid() {
+        return tab == NavBar.PHOTOS ? photos : tab == NavBar.SEARCH ? search : null;
+    }
+
+    private void onSelection(boolean selecting, int count) {
+        if (selectBar != null) selectBar.update(selecting, count);
+    }
+
+    private void applyTopInset(int top) {
+        if (photos != null) photos.setTopInset(top);
+        if (search != null) search.setTopInset(top);
+        if (albums != null) albums.setTopInset(top);
+        if (permView != null) permView.setPadding(permView.getPaddingLeft(), Ui.dp(this, 24) + top,
+                permView.getPaddingRight(), permView.getPaddingBottom());
+    }
+
     /** Space under the floating bar for the system navigation bar: moves the bar and keeps the last row of every list clear of it. */
     private void applyNavInset(int bottom) {
         navInset = bottom;
         if (nav != null) nav.setInset(bottom);
+        if (selectBar != null) selectBar.setInset(bottom);
         if (photos != null) photos.setBottomInset(bottom);
         if (albums != null) albums.setBottomInset(bottom);
         if (search != null) search.setBottomInset(bottom);

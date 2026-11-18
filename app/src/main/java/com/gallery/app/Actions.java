@@ -69,5 +69,6 @@ final class Actions {
         Library.editTarget = m;
         Library.savedEdit = false;
         a.startActivity(new Intent(a, m.video ? VideoEditorActivity.class : ImageEditorActivity.class));
+        Motion.legacy(a, R.anim.modal_open_enter, R.anim.modal_open_exit);
     }
 }

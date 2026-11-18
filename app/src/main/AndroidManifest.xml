@@ -78,6 +78,7 @@
         </activity>
 
         <activity android:name=".AlbumActivity" android:exported="false"
+            android:theme="@style/PushTheme"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
         <activity android:name=".ViewerActivity" android:exported="false"
             android:theme="@style/ViewerTheme"
@@ -94,8 +95,10 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
         <activity android:name=".VideoEditorActivity" android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden" />
-        <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity android:name=".UpdateActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false"
+            android:theme="@style/PushTheme" />
+        <activity android:name=".UpdateActivity" android:exported="false"
+            android:theme="@style/PushTheme" />
 
         <!-- only used to hand the downloaded update APK to the system installer -->
         <provider

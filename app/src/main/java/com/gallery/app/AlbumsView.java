@@ -43,6 +43,8 @@ public class AlbumsView extends LinearLayout {
     private final TextView empty;
     private final boolean wide;
     private ScrollHeader scroller;
+    private View headerView, statusScrim;
+    private int headerPadTop, topInset;
 
     public AlbumsView(BaseActivity a) {
         super(a);
@@ -61,7 +63,7 @@ public class AlbumsView extends LinearLayout {
         settings.setVisibility(VISIBLE);
         settings.setOnClickListener(v -> {
             act.startActivity(new Intent(act, SettingsActivity.class));
-            Motion.legacy(act, R.anim.tab_in, R.anim.tab_out);
+            Motion.legacy(act, R.anim.act_open_enter, R.anim.act_open_exit);
         });
 
         FrameLayout body = new FrameLayout(a);
@@ -93,6 +95,13 @@ public class AlbumsView extends LinearLayout {
         });
         body.addView(rv, new FrameLayout.LayoutParams(-1, -1));
         body.addView(header, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));   // scrolls away with the cards
+        headerView = header;
+        headerPadTop = header.getPaddingTop();
+        statusScrim = new View(a);
+        int bgc = Ui.color(a, R.color.bg) & 0x00FFFFFF;
+        statusScrim.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{bgc | 0xCC000000, bgc}));
+        body.addView(statusScrim, new FrameLayout.LayoutParams(-1, 0, Gravity.TOP));
         scroller = new ScrollHeader(rv, header, Ui.dp(a, 112));
         empty = new TextView(a);
         empty.setText(R.string.empty_library);
@@ -102,6 +111,16 @@ public class AlbumsView extends LinearLayout {
         empty.setVisibility(GONE);
         body.addView(empty, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         refresh();
+    }
+
+    /** The cards scroll up under the status bar like on iPhone; the header sits below it. */
+    public void setTopInset(int px) {
+        if (px == topInset || headerView == null) return;
+        topInset = px;
+        headerView.setPadding(headerView.getPaddingLeft(), headerPadTop + px, headerView.getPaddingRight(), headerView.getPaddingBottom());
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) statusScrim.getLayoutParams();
+        lp.height = px > 0 ? px + Ui.dp(act, 12) : 0;
+        statusScrim.setLayoutParams(lp);
     }
 
     public void setBottomInset(int px) {
