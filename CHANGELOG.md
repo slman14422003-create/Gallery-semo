@@ -78,3 +78,9 @@
 - Viewer: glass back circle, date/time capsule, "..." menu (Edit, Info, Live Text, Slideshow); bottom share circle, heart/info/edit capsule, trash circle.
 - Photo + video editors: Cancel / yellow Done pills, tool-name chip, "..." menu, floating tool bar. Video editor: Save Video Frame as Photo.
 - Player: glass back / title / "..." top row, play + seek capsule, tool row under it.
+
+## Performance / offline Live Text / Settings
+- Viewer: flat translucent controls instead of six live BlurViews; film-strip scrubbing loads only the page you stop on.
+- Live Text: Arabic + English OCR data bundled into the APK (Gradle fetchTessdata), ML Kit and Tesseract run in parallel, extra passes only when needed.
+- Settings redesigned (large title, app card, appearance previews, segmented language, Live Text status).
+- R8: narrower keep rules, strict resource shrinking, extended baseline profile. One iOS easing curve for all screen transitions.

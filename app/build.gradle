@@ -109,6 +109,34 @@ android {
     }
 }
 
+// Live Text works fully offline: the Arabic and English OCR data is fetched once at build time and packed into the APK
+// (src/main/assets/tessdata). If the build machine is offline the app still falls back to a one-time download.
+def tessdataDir = file('src/main/assets/tessdata')
+tasks.register('fetchTessdata') {
+    outputs.dir(tessdataDir)
+    doLast {
+        tessdataDir.mkdirs()
+        ['ara', 'eng'].each { lang ->
+            def target = new File(tessdataDir, "${lang}.traineddata")
+            if (target.exists() && target.length() > 100000) return
+            def part = new File(tessdataDir, "${lang}.part")
+            try {
+                def url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/4.1.0/${lang}.traineddata"
+                logger.lifecycle("Bundling OCR data: ${url}")
+                def conn = new URL(url).openConnection()
+                conn.connectTimeout = 20000
+                conn.readTimeout = 60000
+                conn.inputStream.withCloseable { i -> part.withOutputStream { o -> o << i } }
+                if (part.length() > 100000) part.renameTo(target) else part.delete()
+            } catch (Exception e) {
+                part.delete()
+                logger.warn("Could not bundle ${lang}.traineddata (${e.message}); Live Text will download it on first use instead")
+            }
+        }
+    }
+}
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn 'fetchTessdata' }
+
 dependencies {
     // real-time blur for the floating bars and the viewer overlays (BlurView 4.0, vendored in /blurview)
     implementation project(':blurview')

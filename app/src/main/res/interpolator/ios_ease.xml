@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS navigation easing: fast start, long soft landing -->
+<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:controlX1="0.32"
+    android:controlY1="0.94"
+    android:controlX2="0.6"
+    android:controlY2="1" />

@@ -6,7 +6,7 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Hardening + size: strip debug/verbose logging, flatten package names, let R8 widen access to inline more
+# Hardening + size: strip debug/verbose logging (warnings and errors stay so CrashLog keeps its context), flatten package names, let R8 widen access to inline more
 -assumenosideeffects class android.util.Log {
     public static int v(...);
     public static int d(...);
@@ -42,7 +42,11 @@
 -dontwarn com.google.errorprone.annotations.**
 
 # Tesseract (JNI)
--keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.tesseract.android.TessBaseAPI { *; }
+-keep class com.googlecode.tesseract.android.TessBaseAPI$* { *; }
+-keep class com.googlecode.tesseract.android.ResultIterator { *; }
+-keep class com.googlecode.tesseract.android.PageIterator { *; }
+-keep class com.googlecode.tesseract.android.TessPdfRenderer { *; }
 -keep class com.googlecode.leptonica.android.** { *; }
 -dontwarn com.google.mlkit.**
 
@@ -53,6 +57,11 @@
 -keep class androidx.media3.exoplayer.ExoPlayerImpl { *; }
 -dontwarn androidx.media3.**
 
-# BlurView (vendored module): keep the blur controllers and algorithms
--keep class eightbitlab.com.blurview.** { *; }
--dontwarn eightbitlab.com.blurview.**
+# BlurView (vendored module) uses no reflection, so R8 may shrink and inline it freely (no blanket keep needed)
+
+# Tesseract: JNI reads/writes these fields and calls these methods by name; everything else may be shrunk
+-keepclasseswithmembernames class * { native <methods>; }
+
+# Live Text language data is read from assets/tessdata by path, never by resource id
+# ML Kit / Play Services tasks ship their own consumer rules; only the unavoidable optional references are silenced
+-dontwarn com.google.android.gms.internal.**

@@ -4,3 +4,9 @@ HSPLcom/gallery/app/**-><init>(**)V
 Landroidx/recyclerview/widget/**;
 HSPLandroidx/recyclerview/widget/**->**(**)**
 HSPLandroidx/appcompat/widget/**->**(**)**
+HSPLandroidx/viewpager2/**->**(**)**
+Landroidx/viewpager2/**;
+HSPLcom/bumptech/glide/**->**(**)**
+Lcom/bumptech/glide/**;
+HSPLandroidx/core/view/**->**(**)**
+HSPLeightbitlab/com/blurview/**->**(**)**

@@ -28,6 +28,7 @@ final class Ocr {
     private static final int MAX_SIDE = 3200;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService POOL = Executors.newSingleThreadExecutor();
+    private static final ExecutorService TESS_POOL = Executors.newSingleThreadExecutor();
     private static final LruCache<String, OcrResult> CACHE = new LruCache<>(12);
 
     interface Callback {
@@ -73,6 +74,7 @@ final class Ocr {
             FutureTarget<Bitmap> ft = null;
             try {
                 final boolean auto = AUTO.equals(mode);
+                TessEngine.installBundled(app);                       // offline: the Arabic/English data is inside the APK
                 boolean useTess = TESS.equals(mode) || (auto && (Lang.isAr() || TessEngine.ready(app)));
                 final boolean useMl = MLKIT.equals(mode) || auto;
                 if (useTess && !TessEngine.ready(app)) {
@@ -98,6 +100,11 @@ final class Ocr {
                 Bitmap bmp = ft.get();
                 List<OcrResult> parts = new ArrayList<>();
                 Throwable failure = null;
+                final Bitmap shot = bmp;
+                java.util.concurrent.Future<OcrResult> tessJob = null;
+                if (useTess) {                                        // Arabic + English engine runs beside ML Kit
+                    tessJob = TESS_POOL.submit(() -> new TessEngine().run(app, shot));
+                }
                 if (useMl) {
                     try {
                         parts.add(new MlKitEngine().run(app, bmp));
@@ -105,9 +112,9 @@ final class Ocr {
                         failure = t;
                     }
                 }
-                if (useTess) {
+                if (tessJob != null) {
                     try {
-                        parts.add(new TessEngine().run(app, bmp));
+                        parts.add(tessJob.get());
                     } catch (Throwable t) {
                         failure = t;
                     }

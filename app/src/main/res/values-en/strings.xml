@@ -372,4 +372,10 @@
     <string name="revert_all">Revert to Original</string>
     <string name="save_frame">Save Video Frame as Photo</string>
     <string name="frame_saved">Photo saved to your library</string>
+    <string name="set_live_ready">Works offline · Arabic and English</string>
+    <string name="set_live_loading">Language data is prepared once</string>
+    <string name="set_live_note">Text recognition runs entirely on your device and your photos are never sent anywhere. Only translating the text may need a one-time language model download.</string>
+    <string name="theme_short_auto">Auto</string>
+    <string name="theme_short_dark">Dark</string>
+    <string name="set_gallery_sec">Live Text</string>
 </resources>

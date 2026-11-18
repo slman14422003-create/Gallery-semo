@@ -8,7 +8,10 @@ import com.googlecode.tesseract.android.ResultIterator;
 import com.googlecode.tesseract.android.TessBaseAPI;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +32,32 @@ final class TessEngine implements OcrEngine {
     static boolean ready(Context c) {
         for (String l : LANGS) if (new File(data(c), l + ".traineddata").length() < MIN_BYTES) return false;
         return true;
+    }
+
+    /** Copies the language data that ships inside the APK (assets/tessdata) to where Tesseract reads it. No network. */
+    static boolean installBundled(Context c) {
+        if (ready(c)) return true;
+        File dir = data(c);
+        if (!dir.isDirectory() && !dir.mkdirs()) return false;
+        byte[] buf = new byte[64 * 1024];
+        for (String l : LANGS) {
+            File f = new File(dir, l + ".traineddata");
+            if (f.length() >= MIN_BYTES) continue;
+            File tmp = new File(dir, l + ".part");
+            try (InputStream in = c.getAssets().open("tessdata/" + l + ".traineddata");
+                 OutputStream out = new FileOutputStream(tmp)) {
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            } catch (IOException e) {
+                tmp.delete();
+                return false;
+            }
+            if (tmp.length() < MIN_BYTES || !tmp.renameTo(f)) {
+                tmp.delete();
+                return false;
+            }
+        }
+        return ready(c);
     }
 
     interface Progress {
@@ -75,13 +104,17 @@ final class TessEngine implements OcrEngine {
             api.setVariable("preserve_interword_spaces", "1");
             api.setVariable("user_defined_dpi", "300");
             List<OcrResult> parts = new ArrayList<>();
-            parts.add(pass(api, img, TessBaseAPI.PageSegMode.PSM_AUTO));
-            parts.add(pass(api, img, TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT));
-            Bitmap inv = OcrPrep.enhance(big, true);
-            try {
-                parts.add(pass(api, inv, TessBaseAPI.PageSegMode.PSM_AUTO));
-            } finally {
-                inv.recycle();
+            OcrResult first = pass(api, img, TessBaseAPI.PageSegMode.PSM_AUTO);
+            parts.add(first);
+            // a clear page is read in one pass; the extra passes (sparse text, inverted) only run when little was found
+            if (first.words.size() < 8) {
+                parts.add(pass(api, img, TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT));
+                Bitmap inv = OcrPrep.enhance(big, true);
+                try {
+                    parts.add(pass(api, inv, TessBaseAPI.PageSegMode.PSM_AUTO));
+                } finally {
+                    inv.recycle();
+                }
             }
             return OcrResult.merge(parts);
         } finally {

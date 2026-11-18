@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strict resource shrinking: the app never looks resources up by name (no getIdentifier), so anything unreferenced is removed. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:shrinkMode="strict" />

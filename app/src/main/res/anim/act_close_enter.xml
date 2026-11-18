@@ -3,8 +3,8 @@
 <set xmlns:android="http://schemas.android.com/apk/res/android"
     android:shareInterpolator="false">
     <translate
-        android:duration="300"
-        android:fromXDelta="-28%"
-        android:interpolator="@android:interpolator/decelerate_quint"
+        android:duration="380"
+        android:fromXDelta="-30%"
+        android:interpolator="@interpolator/ios_ease"
         android:toXDelta="0" />
 </set>

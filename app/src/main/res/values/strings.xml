@@ -376,4 +376,10 @@
     <string name="revert_all">الرجوع للأصل</string>
     <string name="save_frame">حفظ الإطار كصورة</string>
     <string name="frame_saved">تم حفظ الصورة في المكتبة</string>
+    <string name="set_live_ready">يعمل بدون إنترنت · عربي وإنجليزي</string>
+    <string name="set_live_loading">سيتم تجهيز بيانات اللغة مرة واحدة</string>
+    <string name="set_live_note">التعرّف على النص في الصور يتم بالكامل على جهازك ولا تُرسل صورك إلى أي مكان. ترجمة النص فقط قد تحتاج تنزيل نموذج اللغة مرة واحدة.</string>
+    <string name="theme_short_auto">تلقائي</string>
+    <string name="theme_short_dark">ليلي</string>
+    <string name="set_gallery_sec">النص في الصور</string>
 </resources>

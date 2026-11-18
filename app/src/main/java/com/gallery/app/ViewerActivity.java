@@ -109,6 +109,13 @@ public class ViewerActivity extends BaseActivity {
     private TextView dlText;
     private OnBackPressedCallback liveBack;
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private int scrubPos = -1;
+    /** While the film strip is dragged only the page the finger settles on is loaded (not one 2K decode per tick). */
+    private final Runnable scrubApply = () -> {
+        int p = scrubPos;
+        scrubPos = -1;
+        if (p >= 0 && p != current && pager != null) pager.setCurrentItem(p, false);
+    };
     private boolean slideshow;
     private boolean editing;   // this viewer opened an editor; close once an edited copy was saved
     private final Runnable slideStep = new Runnable() {
@@ -278,11 +285,22 @@ public class ViewerActivity extends BaseActivity {
 
     // ------------------------------------------------------------------ building
 
-    /** A button on a round glass disc (iOS 26 style). */
+    /** Translucent iOS-style disc / capsule. Drawn flat on purpose: live blur behind six controls re-rendered every frame and made paging stutter. */
+    private View flat(View child, FrameLayout.LayoutParams clp) {
+        FrameLayout f = new FrameLayout(this);
+        boolean night = Appearance.isNight(this);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(Ui.dp(this, 100));
+        g.setColor(night ? 0xE62C2C2E : 0xF0F2F2F7);
+        g.setStroke(Math.max(1, Ui.dp(this, 1) / 2), night ? 0x26FFFFFF : 0x1A000000);
+        f.setBackground(g);
+        child.setBackground(null);
+        f.addView(child, clp);
+        return f;
+    }
+
     private View glassCircle(ImageButton btn, int sizeDp) {
-        btn.setBackground(null);
-        View g = Glass.wrap(this, blurTarget, btn, -1, Glass.overlay(this), new FrameLayout.LayoutParams(-1, -1));
-        g.setElevation(Ui.dp(this, 6));
+        View g = flat(btn, new FrameLayout.LayoutParams(-1, -1));
         g.setLayoutParams(new FrameLayout.LayoutParams(Ui.dp(this, sizeDp), Ui.dp(this, sizeDp)));
         return g;
     }
@@ -318,8 +336,7 @@ public class ViewerActivity extends BaseActivity {
         subTv.setGravity(Gravity.CENTER);
         titles.addView(titleTv);
         titles.addView(subTv);
-        View pillG = Glass.wrap(this, blurTarget, titles, -1, Glass.overlay(this), new FrameLayout.LayoutParams(-2, -1));
-        pillG.setElevation(Ui.dp(this, 6));
+        View pillG = flat(titles, new FrameLayout.LayoutParams(-2, -1));
         topBar.addView(pillG, new FrameLayout.LayoutParams(-2, Ui.dp(this, 46), Gravity.CENTER));
 
         // right: one "..." circle (Edit, Live Text, Slideshow live inside it)
@@ -375,6 +392,8 @@ public class ViewerActivity extends BaseActivity {
                     if (slideshow) stopSlideshow();
                 } else if (state == RecyclerView.SCROLL_STATE_IDLE && stripUser) {
                     stripUser = false;
+                    ui.removeCallbacks(scrubApply);
+                    scrubApply.run();
                     centerStrip(current, true);
                 }
             }
@@ -384,9 +403,11 @@ public class ViewerActivity extends BaseActivity {
                 if (!stripUser) return;
                 View c = rv.findChildViewUnder(rv.getWidth() / 2f, rv.getHeight() / 2f);
                 int pos = c == null ? -1 : rv.getChildAdapterPosition(c);
-                if (pos >= 0 && pos != current) {
+                if (pos >= 0 && pos != current && pos != scrubPos) {
+                    scrubPos = pos;
                     rv.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-                    pager.setCurrentItem(pos, false);
+                    ui.removeCallbacks(scrubApply);
+                    ui.postDelayed(scrubApply, 60);
                 }
             }
         });
@@ -414,8 +435,7 @@ public class ViewerActivity extends BaseActivity {
                 new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
         mid.addView(toolButton(R.drawable.ic_sliders, R.string.edit, v -> openEditor()),
                 new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
-        View midG = Glass.wrap(this, blurTarget, mid, -1, Glass.overlay(this), new FrameLayout.LayoutParams(-2, -1));
-        midG.setElevation(Ui.dp(this, 6));
+        View midG = flat(mid, new FrameLayout.LayoutParams(-2, -1));
         toolbar.addView(midG, new LinearLayout.LayoutParams(-2, Ui.dp(this, 52)));
         toolbar.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
         // delete: glass circle on the right

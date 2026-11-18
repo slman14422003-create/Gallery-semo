@@ -13,3 +13,6 @@ keystore.properties
 signing/
 /.cxx
 /captures
+
+# OCR language data is downloaded into the APK by the fetchTessdata Gradle task
+/app/src/main/assets/tessdata/
