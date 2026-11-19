@@ -213,12 +213,6 @@ public class MediaGrid extends LinearLayout {
             }
         });
         rv.setLayoutManager(glm);
-        androidx.recyclerview.widget.DefaultItemAnimator ia = new androidx.recyclerview.widget.DefaultItemAnimator();
-        ia.setSupportsChangeAnimations(false);   // no cross-fade flash when a tile only changes its selection / favourite mark
-        ia.setAddDuration(240);
-        ia.setRemoveDuration(200);
-        ia.setMoveDuration(280);
-        rv.setItemAnimator(ia);
         rv.setAdapter(ad);
                 rv.setItemViewCacheSize(30);
         rv.setHasFixedSize(true);
@@ -229,9 +223,9 @@ public class MediaGrid extends LinearLayout {
         rv.getRecycledViewPool().setMaxRecycledViews(1, 60);
         RecyclerView.ItemAnimator ia = rv.getItemAnimator();
         if (ia != null) {
-            ia.setAddDuration(120);
-            ia.setRemoveDuration(100);
-            ia.setMoveDuration(160);
+            ia.setAddDuration(220);
+            ia.setRemoveDuration(180);
+            ia.setMoveDuration(260);
             if (ia instanceof SimpleItemAnimator) ((SimpleItemAnimator) ia).setSupportsChangeAnimations(false);   // no flicker on updates
         }
         final int gap = Math.max(1, Math.round(a.getResources().getDisplayMetrics().density * 0.5f));   // 1dp between tiles
