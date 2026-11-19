@@ -21,6 +21,16 @@ public class App extends Application {
         CrashLog.install(this);
         Lang.init(this);
         Appearance.applyMode(this);
+        Perf.apply(this);
+        // Glide: a memory cache sized for a few screens of thumbnails and a bitmap pool, set up once before first use
+        try {
+            long max = Runtime.getRuntime().maxMemory();
+            com.bumptech.glide.Glide.init(this, new com.bumptech.glide.GlideBuilder()
+                    .setMemoryCache(new com.bumptech.glide.load.engine.cache.LruResourceCache(Math.min(160L << 20, max / 6)))
+                    .setBitmapPool(new com.bumptech.glide.load.engine.bitmap_recycle.LruBitmapPool(Math.min(96L << 20, max / 10)))
+                    .setLogLevel(android.util.Log.ERROR));
+        } catch (Throwable ignored) {
+        }
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override public void onActivityCreated(Activity a, Bundle b) { }
 

@@ -382,4 +382,7 @@
     <string name="theme_short_auto">تلقائي</string>
     <string name="theme_short_dark">ليلي</string>
     <string name="set_gallery_sec">النص في الصور</string>
+    <string name="set_glass">تأثير الزجاج المموّه</string>
+    <string name="set_glass_sub">أجمل شكلاً لكنه يبطّئ التمرير في الأجهزة المتوسطة. اتركه مطفأً للسلاسة.</string>
+    <string name="set_glass_restart">أعد فتح التطبيق ليُطبَّق التغيير</string>
 </resources>

@@ -137,6 +137,14 @@ public class SettingsActivity extends BaseActivity {
         content.addView(Ui.sectionTitle(this, getString(R.string.theme_title)));
         content.addView(themePicker());
         content.addView(Ui.footer(this, getString(R.string.theme_mode_note)));
+        // glass blur costs GPU time on every frame, so it is opt-in
+        Ui.Toggle glass = Ui.toggle(this, content, R.string.set_glass, R.string.set_glass_sub, Perf.blur(this), R.drawable.ic_image, TEAL);
+        glass.onChange((b, on) -> {
+            Store.setBool(this, "glass_blur", on);
+            Perf.apply(this);
+            android.widget.Toast.makeText(this, R.string.set_glass_restart, android.widget.Toast.LENGTH_SHORT).show();
+        });
+        content.addView(glass.view);
 
         // language: segmented control
         content.addView(Ui.sectionTitle(this, getString(R.string.set_language)));

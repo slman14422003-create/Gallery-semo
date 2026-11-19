@@ -91,3 +91,8 @@
 - Collections header no longer disappears (ScrollHeader derives from the list, cheaper per scroll).
 - Viewer: photo keeps the same size when the bars hide; bars are transparent.
 - Settings tab bar is real glass; blur freezes while another screen covers the main screen; item animators tuned.
+
+## Performance pass
+- Live glass blur is now opt-in (Settings > Frosted glass blur). Off: flat translucent bars and BlurTarget stops recording a second render pass each frame.
+- Thumbnails are preloaded 4 rows ahead while scrolling; Glide memory cache and bitmap pool sized to the device.
+- Viewer decodes at screen size (max 2048) instead of always 2048.

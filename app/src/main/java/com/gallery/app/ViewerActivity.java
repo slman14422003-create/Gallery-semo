@@ -109,6 +109,9 @@ public class ViewerActivity extends BaseActivity {
     private TextView dlText;
     private OnBackPressedCallback liveBack;
     private final Handler ui = new Handler(Looper.getMainLooper());
+    /** Longest side the photo is decoded at: a bit above the screen, not a fixed 2K (a smaller decode pages faster). */
+    private final int PAGE_PX = Math.min(2048, Math.round(Math.max(android.content.res.Resources.getSystem().getDisplayMetrics().widthPixels,
+            android.content.res.Resources.getSystem().getDisplayMetrics().heightPixels) * 1.15f));
     private int scrubPos = -1;
     /** While the film strip is dragged only the page the finger settles on is loaded (not one 2K decode per tick). */
     private final Runnable scrubApply = () -> {
@@ -1324,7 +1327,7 @@ public class ViewerActivity extends BaseActivity {
                 h.play.setVisibility(View.GONE);
                 h.photo.setVisibility(View.VISIBLE);
                 Glide.with(h.itemView).load(m.uri)
-                        .override(2048, 2048)
+                        .override(PAGE_PX, PAGE_PX)
                         .downsample(DownsampleStrategy.AT_MOST)
                         .signature(new ObjectKey(m.modified + ":" + m.size))
                         .thumbnail(0.2f)

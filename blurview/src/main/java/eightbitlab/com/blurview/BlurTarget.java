@@ -26,6 +26,9 @@ public class BlurTarget extends FrameLayout {
     static final boolean usesOpenGLBlur = !canUseHardwareRendering
             && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
 
+    /** When false no BlurView is blurring, so the target skips recording its children into a second RenderNode every frame. */
+    public static boolean globalRecording = true;
+
     @Nullable
     RenderNode renderNode;
 
@@ -61,7 +64,7 @@ public class BlurTarget extends FrameLayout {
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
-        if (canUseHardwareRendering && canvas.isHardwareAccelerated()) {
+        if (globalRecording && canUseHardwareRendering && canvas.isHardwareAccelerated()) {
             renderNode.setPosition(0, 0, getWidth(), getHeight());
             RecordingCanvas recordingCanvas = renderNode.beginRecording();
             super.dispatchDraw(recordingCanvas);

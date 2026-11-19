@@ -25,6 +25,17 @@ final class Thumbs {
                 .into(iv);
     }
 
+    /** Warms the cache for tiles about to scroll into view (same options as {@link #load}, so it is a cache hit). */
+    static void preload(Context c, Media m, int px) {
+        Glide.with(c)
+                .asBitmap()
+                .load(m.uri)
+                .override(px, px)
+                .centerCrop()
+                .signature(new ObjectKey(m.modified + ":" + m.size))
+                .preload(px, px);
+    }
+
     static void clear(ImageView iv) {
         try {
             Glide.with(iv).clear(iv);

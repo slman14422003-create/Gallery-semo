@@ -214,6 +214,12 @@ public class MediaGrid extends LinearLayout {
         });
         rv.setLayoutManager(glm);
         rv.setAdapter(ad);
+        rv.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(RecyclerView r, int dx, int dy) {
+                if (dy != 0) preloadAhead(dy > 0);
+            }
+        });
                 rv.setItemViewCacheSize(30);
         rv.setHasFixedSize(true);
         rv.setDrawingCacheEnabled(false);
@@ -1054,6 +1060,25 @@ public class MediaGrid extends LinearLayout {
         @Override
         public void onViewRecycled(RecyclerView.ViewHolder h) {
             if (h.itemView instanceof Tile) Thumbs.clear(((Tile) h.itemView).thumb);
+        }
+    }
+
+    private int lastPreload = -1;
+
+    /** Decodes the next few rows of thumbnails in the background so they are ready before they scroll into view. */
+    private void preloadAhead(boolean down) {
+        int first = glm.findFirstVisibleItemPosition(), last = glm.findLastVisibleItemPosition();
+        if (first < 0 || last < 0) return;
+        int anchor = down ? last : first;
+        if (Math.abs(anchor - lastPreload) < cols) return;        // once per row, not per pixel
+        lastPreload = anchor;
+        int px = tilePx();
+        int n = cols * 4;
+        for (int i = 1; i <= n; i++) {
+            int p = down ? last + i : first - i;
+            if (p < 0 || p >= items.size()) break;
+            Object o = items.get(p);
+            if (o instanceof Media) Thumbs.preload(act, (Media) o, px);
         }
     }
 

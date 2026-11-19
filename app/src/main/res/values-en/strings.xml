@@ -378,4 +378,7 @@
     <string name="theme_short_auto">Auto</string>
     <string name="theme_short_dark">Dark</string>
     <string name="set_gallery_sec">Live Text</string>
+    <string name="set_glass">Frosted glass blur</string>
+    <string name="set_glass_sub">Prettier, but it slows scrolling on mid-range phones. Leave it off for smoothness.</string>
+    <string name="set_glass_restart">Reopen the app to apply</string>
 </resources>

@@ -28,10 +28,19 @@ final class Glass {
     /** cornerPx &lt; 0 means a full capsule / circle. */
     static void apply(BlurView bv, BlurTarget target, final float cornerPx, int overlay) {
         Context c = bv.getContext();
-        bv.setupWith(target)
-                .setFrameClearDrawable(new ColorDrawable(Ui.color(c, R.color.bg)))
-                .setBlurRadius(RADIUS);
-        bv.setOverlayColor(overlay);
+        final boolean live = Perf.blur(c);
+        if (live) {
+            bv.setupWith(target)
+                    .setFrameClearDrawable(new ColorDrawable(Ui.color(c, R.color.bg)))
+                    .setBlurRadius(RADIUS);
+            bv.setOverlayColor(overlay);
+        } else {
+            // flat translucent material: same look, no live blur (a BlurView without setupWith is a plain FrameLayout)
+            GradientDrawable flat = new GradientDrawable();
+            flat.setCornerRadius(cornerPx < 0 ? Ui.dp(c, 200) : cornerPx);
+            flat.setColor(overlay == OVER_MEDIA ? 0xCC000000 : (Appearance.isNight(c) ? 0xF0262628 : 0xF2F5F5F8));
+            bv.setBackground(flat);
+        }
         bv.setOutlineProvider(new ViewOutlineProvider() {
             @Override
             public void getOutline(View v, Outline o) {
