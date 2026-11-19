@@ -307,7 +307,6 @@ public class ViewerActivity extends BaseActivity {
 
     private void buildTopBar(FrameLayout root) {
         topBar = new FrameLayout(this);
-        topBar.setBackgroundColor((viewerBg & 0x00FFFFFF) | 0xF2000000);
 
         // back: glass circle on the left
         ImageButton back = circleButton(R.drawable.ic_chevron, R.string.back);
@@ -365,7 +364,6 @@ public class ViewerActivity extends BaseActivity {
     private void buildBottom(FrameLayout root) {
         bottomPanel = new LinearLayout(this);
         bottomPanel.setOrientation(LinearLayout.VERTICAL);
-        bottomPanel.setBackgroundColor((viewerBg & 0x00FFFFFF) | 0xF2000000);
 
         strip = new RecyclerView(this);
         stripLm = new LinearLayoutManager(this, RecyclerView.HORIZONTAL, false);
@@ -457,7 +455,7 @@ public class ViewerActivity extends BaseActivity {
         Ui.press(this, liveBtn);
         liveBtn.setOnClickListener(v -> toggleLive());
         liveBtn.setOnLongClickListener(v -> {
-            pickEngine();
+            pickEngine(liveBtn);
             return true;
         });
         FrameLayout.LayoutParams ll = new FrameLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 40), Gravity.BOTTOM | Gravity.END);
@@ -493,12 +491,14 @@ public class ViewerActivity extends BaseActivity {
         updatePageInsets(false);
     }
 
+    // The photo keeps the same size and position whether the bars are shown or hidden (they just fade),
+    // like the iPhone: no jump when you tap to hide them.
     private int insetTop() {
-        return chrome ? topH : 0;
+        return topH;
     }
 
     private int insetBottom() {
-        return chrome ? bottomH : 0;
+        return bottomH;
     }
 
     private void updatePageInsets(boolean animate) {
@@ -1192,19 +1192,20 @@ public class ViewerActivity extends BaseActivity {
                 .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
     }
 
-    private void pickEngine() {
+    private void pickEngine(View anchor) {
         final String[] ids = {Ocr.AUTO, Ocr.MLKIT, Ocr.TESS, Ocr.VISION};
         final int[] names = {R.string.ocr_engine_auto, R.string.ocr_engine_mlkit, R.string.ocr_engine_tess, R.string.ocr_engine_vision};
         String curMode = Ocr.mode(this);
-        CharSequence[] items = new CharSequence[ids.length];
+        List<PullDown.Row> rows = new ArrayList<>();
         for (int i = 0; i < ids.length; i++) {
-            items[i] = (ids[i].equals(curMode) ? "✓ " : "○ ") + getString(names[i]);
+            final String id = ids[i];
+            rows.add(PullDown.choice(getString(names[i]), id.equals(curMode), () -> {
+                Ocr.setMode(this, id);
+                if (live) exitLive();
+                if (Ocr.VISION.equals(id) && VisionEngine.key(this).isEmpty()) askKey(null);
+            }));
         }
-        new Dlg(this).setTitle(R.string.ocr_engine).setItems(items, (d, w) -> {
-            Ocr.setMode(this, ids[w]);
-            if (live) exitLive();
-            if (Ocr.VISION.equals(ids[w]) && VisionEngine.key(this).isEmpty()) askKey(null);
-        }).show();
+        PullDown.show(this, anchor, rows);
     }
 
     private void askKey(final Runnable after) {

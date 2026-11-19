@@ -314,8 +314,8 @@ public class PlayerActivity extends BaseActivity {
         cap.addView(curTv);
         cap.addView(seek, new LinearLayout.LayoutParams(0, Ui.dp(this, 36), 1f));
         cap.addView(durTv);
-        cap.addView(toolIconFlat(R.drawable.ic_subtitle, R.string.t_subs, v -> pickSubs()), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 46)));
-        cap.addView(toolIconFlat(R.drawable.ic_music, R.string.t_audio, v -> pickAudio()), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 46)));
+        cap.addView(toolIconFlat(R.drawable.ic_subtitle, R.string.t_subs, this::pickSubs), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 46)));
+        cap.addView(toolIconFlat(R.drawable.ic_music, R.string.t_audio, this::pickAudio), new LinearLayout.LayoutParams(Ui.dp(this, 42), Ui.dp(this, 46)));
         bottomBar.addView(cap, new LinearLayout.LayoutParams(-1, Ui.dp(this, 58)));
 
         LinearLayout tools = new LinearLayout(this);
@@ -342,7 +342,7 @@ public class PlayerActivity extends BaseActivity {
         speedBtn.setGravity(Gravity.CENTER);
         speedBtn.setContentDescription(getString(R.string.t_speed));
         Ui.press(this, speedBtn);
-        speedBtn.setOnClickListener(v -> pickSpeed());
+        speedBtn.setOnClickListener(this::pickSpeed);
         mid.addView(speedBtn, new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
         mid.addView(toolIconFlat(R.drawable.ic_aspect, R.string.t_aspect, v -> cycleAspect()), new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
         mid.addView(toolIconFlat(R.drawable.ic_rotate, R.string.t_rotate, v -> cycleOrientation()), new LinearLayout.LayoutParams(Ui.dp(this, 54), Ui.dp(this, 54)));
@@ -1097,15 +1097,17 @@ public class PlayerActivity extends BaseActivity {
         return s == (int) s ? String.valueOf((int) s) : String.valueOf(s);
     }
 
-    private void pickSpeed() {
-        String[] n = new String[SPEEDS.length];
-        for (int i = 0; i < n.length; i++) n[i] = (SPEEDS[i] == speed ? "● " : "○ ") + fmtSpeed(SPEEDS[i]) + "×";
-        new Dlg(this).setTitle(R.string.t_speed).setItems(n, (d, w) -> {
-            speed = SPEEDS[w];
-            engine.setSpeed(speed);
-            speedBtn.setText(fmtSpeed(speed) + "×");
-            hudShow(fmtSpeed(speed) + "×");
-        }).show();
+    private void pickSpeed(View anchor) {
+        List<PullDown.Row> rows = new ArrayList<>();
+        for (final float sp : SPEEDS) {
+            rows.add(PullDown.choice(fmtSpeed(sp) + "×", sp == speed, () -> {
+                speed = sp;
+                engine.setSpeed(speed);
+                speedBtn.setText(fmtSpeed(speed) + "×");
+                hudShow(fmtSpeed(speed) + "×");
+            }));
+        }
+        PullDown.show(this, anchor, rows);
     }
 
     private void cycleAspect() {
@@ -1128,42 +1130,46 @@ public class PlayerActivity extends BaseActivity {
     }
 
     private void showMore(View anchor) {
-        List<IosMenu.Item> items = new ArrayList<>();
-        items.add(new IosMenu.Item(loop ? R.string.loop_on : R.string.t_loop, R.drawable.ic_refresh, false, () -> {
+        List<PullDown.Row> rows = new ArrayList<>();
+        rows.add(PullDown.action(getString(loop ? R.string.loop_on : R.string.t_loop), R.drawable.ic_refresh, () -> {
             loop = !loop;
             engine.setLooping(loop);
             hudShow(getString(loop ? R.string.loop_on : R.string.loop_off));
         }));
-        items.add(new IosMenu.Item(R.string.t_pip, R.drawable.ic_play, false, this::enterPip));
-        items.add(new IosMenu.Item(R.string.info, R.drawable.ic_info, false, () -> InfoSheet.show(this, playlist.get(idx))));
-        items.add(new IosMenu.Item(R.string.set_engine, R.drawable.ic_play_fill, false, this::toggleEngine));
-        IosMenu.show(this, anchor, items);
+        rows.add(PullDown.action(getString(R.string.t_pip), R.drawable.ic_play, this::enterPip));
+        rows.add(PullDown.action(getString(R.string.info), R.drawable.ic_info, () -> InfoSheet.show(this, playlist.get(idx))));
+        rows.add(PullDown.separator());
+        rows.add(PullDown.action(getString(R.string.set_engine), R.drawable.ic_play_fill, this::toggleEngine));
+        PullDown.show(this, anchor, rows);
     }
 
-    private void pickAudio() {
+    private void pickAudio(View anchor) {
         final List<PlayerEngine.Track> l = engine.audioTracks();
         if (l.isEmpty()) {
             Toast.makeText(this, R.string.no_tracks, Toast.LENGTH_SHORT).show();
             return;
         }
-        String[] n = new String[l.size()];
-        for (int i = 0; i < n.length; i++) n[i] = (l.get(i).selected ? "● " : "○ ") + l.get(i).label;
-        new Dlg(this).setTitle(R.string.t_audio).setItems(n, (d, w) -> engine.selectAudio(w)).show();
+        List<PullDown.Row> rows = new ArrayList<>();
+        for (int i = 0; i < l.size(); i++) {
+            final int k = i;
+            rows.add(PullDown.choice(l.get(i).label, l.get(i).selected, () -> engine.selectAudio(k)));
+        }
+        PullDown.show(this, anchor, rows);
     }
 
-    private void pickSubs() {
+    private void pickSubs(View anchor) {
         final List<PlayerEngine.Track> l = engine.textTracks();
         boolean any = false;
         for (PlayerEngine.Track t : l) if (t.selected) any = true;
-        final List<String> n = new ArrayList<>();
-        n.add((any ? "○ " : "● ") + getString(R.string.subs_off));
-        for (PlayerEngine.Track t : l) n.add((t.selected ? "● " : "○ ") + t.label);
-        n.add("＋ " + getString(R.string.subs_add));
-        new Dlg(this).setTitle(R.string.t_subs).setItems(n.toArray(new String[0]), (d, w) -> {
-            if (w == 0) engine.selectText(-1);
-            else if (w == n.size() - 1) subPicker.launch(new String[]{"*/*"});
-            else engine.selectText(w - 1);
-        }).show();
+        List<PullDown.Row> rows = new ArrayList<>();
+        rows.add(PullDown.choice(getString(R.string.subs_off), !any, () -> engine.selectText(-1)));
+        for (int i = 0; i < l.size(); i++) {
+            final int k = i;
+            rows.add(PullDown.choice(l.get(i).label, l.get(i).selected, () -> engine.selectText(k)));
+        }
+        rows.add(PullDown.separator());
+        rows.add(PullDown.action(getString(R.string.subs_add), R.drawable.ic_plus, () -> subPicker.launch(new String[]{"*/*"})));
+        PullDown.show(this, anchor, rows);
     }
 
     private void onSubtitlePicked(Uri u) {

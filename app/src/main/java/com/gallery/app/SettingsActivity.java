@@ -13,6 +13,11 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import eightbitlab.com.blurview.BlurTarget;
+
 /**
  * Settings, redesigned like iOS 26: a slim top bar whose centred title fades in as the big title scrolls away, an app card
  * that opens updates, appearance as three live previews, language as a segmented control, Live Text status, then the
@@ -29,10 +34,16 @@ public class SettingsActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // the tab bar at the bottom is real glass (blurs the settings behind it), not a flat dark capsule
+        final FrameLayout frame = new FrameLayout(this);
+        frame.setBackgroundColor(Ui.color(this, R.color.bg_group));
+        final BlurTarget blurTarget = new BlurTarget(this);
+        blurTarget.setBackgroundColor(Ui.color(this, R.color.bg_group));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Ui.color(this, R.color.bg_group));
-        setContentView(root);
+        blurTarget.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        frame.addView(blurTarget, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(frame);
         useGroupedBackground();
         enableSwipeBack();
 
@@ -74,7 +85,7 @@ public class SettingsActivity extends BaseActivity {
         scroll.setOnScrollChangeListener((v, x, y, ox, oy) -> barTitle.setAlpha(Math.max(0f, Math.min(1f, (y - fade * 0.4f) / (fade * 0.6f)))));
 
         Ui.autoGroup(this, content);
-        nav = NavBar.attach(this, NavBar.SETTINGS, this::goTab);
+        nav = NavBar.attach(this, NavBar.SETTINGS, blurTarget, this::goTab);
         Motion.install(this, R.anim.act_open_enter, R.anim.act_open_exit, R.anim.act_close_enter, R.anim.act_close_exit);
     }
 
@@ -138,13 +149,13 @@ public class SettingsActivity extends BaseActivity {
                 getString(R.string.live_text), getString(ready ? R.string.set_live_ready : R.string.set_live_loading),
                 false, false).tint(BLUE), null));
         content.addView(Ui.rowView(this, content, new Row(R.drawable.ic_text, false,
-                getString(R.string.ocr_engine), ocrEngineName(), false, true).tint(INDIGO), v -> pickOcr()));
+                getString(R.string.ocr_engine), ocrEngineName(), false, true).tint(INDIGO), this::pickOcr));
         content.addView(Ui.footer(this, getString(R.string.set_live_note)));
 
         // player
         content.addView(Ui.sectionTitle(this, getString(R.string.set_player)));
         content.addView(Ui.rowView(this, content, new Row(R.drawable.ic_video, false,
-                getString(R.string.set_engine), engineName(), false, true).tint(RED), v -> pickEngine()));
+                getString(R.string.set_engine), engineName(), false, true).tint(RED), this::pickEngine));
         toggle(R.string.set_hw, R.string.set_hw_sub, "hw", R.drawable.ic_speed, ORANGE);
         toggle(R.string.set_resume, R.string.set_resume_sub, "resume", R.drawable.ic_clock, TEAL);
         toggle(R.string.set_autonext, R.string.set_autonext_sub, "autonext", R.drawable.ic_skip_next, GREEN);
@@ -331,6 +342,8 @@ public class SettingsActivity extends BaseActivity {
             t.setTextSize(15);
             t.setGravity(Gravity.CENTER);
             t.setSingleLine(true);
+            t.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 6), 0);
+            t.setAutoSizeTextTypeUniformWithConfiguration(11, 15, 1, android.util.TypedValue.COMPLEX_UNIT_SP);   // "System language" must fit its cell
             t.setTypeface(Typeface.create("sans-serif-medium", on ? Typeface.BOLD : Typeface.NORMAL));
             t.setTextColor(Ui.color(this, on ? R.color.text_primary : R.color.text_secondary));
             if (on) {
@@ -351,26 +364,33 @@ public class SettingsActivity extends BaseActivity {
         return Ui.block(this, seg);
     }
 
-    private void pickOcr() {
+    private void pickOcr(View anchor) {
         final String[] ids = {Ocr.AUTO, Ocr.MLKIT, Ocr.TESS};
         final int[] names = {R.string.ocr_engine_auto, R.string.ocr_engine_mlkit, R.string.ocr_engine_tess};
         String cur = Ocr.mode(this);
-        String[] items = new String[ids.length];
-        for (int i = 0; i < ids.length; i++) items[i] = (ids[i].equals(cur) ? "● " : "○ ") + getString(names[i]);
-        new Dlg(this).setTitle(R.string.ocr_engine).setItems(items, (d, w) -> {
-            Ocr.setMode(this, ids[w]);
-            render();
-        }).show();
+        List<PullDown.Row> rows = new ArrayList<>();
+        for (int i = 0; i < ids.length; i++) {
+            final String id = ids[i];
+            rows.add(PullDown.choice(getString(names[i]), id.equals(cur), () -> {
+                Ocr.setMode(this, id);
+                render();
+            }));
+        }
+        PullDown.show(this, anchor, rows);
     }
 
-    private void pickEngine() {
+    private void pickEngine(View anchor) {
         final String[] codes = {"auto", "exo", "vlc"};
+        final int[] names = {R.string.eng_auto, R.string.eng_exo, R.string.eng_vlc};
         String cur = Store.str(this, "engine", "auto");
-        String[] names = {getString(R.string.eng_auto), getString(R.string.eng_exo), getString(R.string.eng_vlc)};
-        for (int i = 0; i < names.length; i++) names[i] = (codes[i].equals(cur) ? "● " : "○ ") + names[i];
-        new Dlg(this).setTitle(R.string.set_engine).setItems(names, (d, which) -> {
-            Store.setStr(this, "engine", codes[which]);
-            render();
-        }).show();
+        List<PullDown.Row> rows = new ArrayList<>();
+        for (int i = 0; i < codes.length; i++) {
+            final String code = codes[i];
+            rows.add(PullDown.choice(getString(names[i]), code.equals(cur), () -> {
+                Store.setStr(this, "engine", code);
+                render();
+            }));
+        }
+        PullDown.show(this, anchor, rows);
     }
 }

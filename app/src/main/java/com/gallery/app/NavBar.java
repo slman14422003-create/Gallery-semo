@@ -406,6 +406,19 @@ final class NavBar {
         }
     }
 
+    /** Freezes / resumes the live blur (the screen is covered by another one, so re-blurring every frame is wasted GPU work). */
+    void setLive(boolean live) {
+        freeze(row, live);
+    }
+
+    private static void freeze(View v, boolean live) {
+        if (v instanceof eightbitlab.com.blurview.BlurView) ((eightbitlab.com.blurview.BlurView) v).setBlurAutoUpdate(live);
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) freeze(g.getChildAt(i), live);
+        }
+    }
+
     /** Slides the whole bar away (selection mode) or back. */
     void setHidden(boolean hide) {
         if (row == null) return;

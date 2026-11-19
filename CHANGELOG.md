@@ -84,3 +84,10 @@
 - Live Text: Arabic + English OCR data bundled into the APK (Gradle fetchTessdata), ML Kit and Tesseract run in parallel, extra passes only when needed.
 - Settings redesigned (large title, app card, appearance previews, segmented language, Live Text status).
 - R8: narrower keep rules, strict resource shrinking, extended baseline profile. One iOS easing curve for all screen transitions.
+
+## Menus, header fix, viewer
+- iOS pull-down menus (PullDown) replace option dialogs: Library "..." (filter, group, sort, columns), Settings pickers, player speed/audio/subtitles/more, Live Text engine.
+- Library: the All/Photos/Videos/Favorites chip row is gone (filters are in the "..." menu).
+- Collections header no longer disappears (ScrollHeader derives from the list, cheaper per scroll).
+- Viewer: photo keeps the same size when the bars hide; bars are transparent.
+- Settings tab bar is real glass; blur freezes while another screen covers the main screen; item animators tuned.

@@ -172,6 +172,18 @@ public class MainActivity extends BaseActivity implements Library.Listener {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (nav != null) nav.setLive(true);
+    }
+
+    @Override
+    protected void onPause() {
+        if (nav != null) nav.setLive(false);   // a screen is on top (album, settings, viewer): stop re-blurring behind it
+        super.onPause();
+    }
+
+    @Override
     protected void onStart() {
         super.onStart();
         Library.listen(this);
@@ -304,7 +316,9 @@ public class MainActivity extends BaseActivity implements Library.Listener {
             if (prev == null) {
                 next.setAlpha(1f);
             } else {
-                next.animate().alpha(1f).setStartDelay(50).setDuration(220)
+                next.setScaleX(0.985f);
+                next.setScaleY(0.985f);
+                next.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(40).setDuration(260)
                         .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
                         .withLayer().start();
                 prev.animate().cancel();
@@ -314,6 +328,8 @@ public class MainActivity extends BaseActivity implements Library.Listener {
                             if (prev != shown) {
                                 prev.setVisibility(View.GONE);
                                 prev.setAlpha(1f);
+                                prev.setScaleX(1f);
+                                prev.setScaleY(1f);
                             }
                         }).start();
             }

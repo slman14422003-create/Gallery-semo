@@ -213,6 +213,12 @@ public class MediaGrid extends LinearLayout {
             }
         });
         rv.setLayoutManager(glm);
+        androidx.recyclerview.widget.DefaultItemAnimator ia = new androidx.recyclerview.widget.DefaultItemAnimator();
+        ia.setSupportsChangeAnimations(false);   // no cross-fade flash when a tile only changes its selection / favourite mark
+        ia.setAddDuration(240);
+        ia.setRemoveDuration(200);
+        ia.setMoveDuration(280);
+        rv.setItemAnimator(ia);
         rv.setAdapter(ad);
                 rv.setItemViewCacheSize(30);
         rv.setHasFixedSize(true);
@@ -351,7 +357,7 @@ public class MediaGrid extends LinearLayout {
         });
         btnA2.setOnClickListener(v -> {
             if (selecting) showSelectMenu(v);
-            else showOptions();
+            else showOptions(v);
         });
 
         selBar = new LinearLayout(a);
@@ -519,7 +525,7 @@ public class MediaGrid extends LinearLayout {
     private void applyMode() {
         btnBack.setVisibility(onBack != null ? VISIBLE : GONE);
         headerIcon.setVisibility(GONE);
-        chipScroll.setVisibility(mode == SEARCH ? GONE : VISIBLE);
+        chipScroll.setVisibility(GONE);   // filters live in the "..." menu now
     }
 
     // ------------------------------------------------------------------ data
@@ -840,11 +846,11 @@ public class MediaGrid extends LinearLayout {
             popup.dismiss();
             return;
         }
-        List<IosMenu.Item> menu = new ArrayList<>();
+        List<PullDown.Row> menu = new ArrayList<>();
         boolean all = !shown.isEmpty() && sel.size() == shown.size();
-        menu.add(new IosMenu.Item(all ? R.string.deselect_all : R.string.select_all, R.drawable.ic_check_circle, false, this::selectAll));
-        if (!sel.isEmpty()) menu.add(new IosMenu.Item(R.string.favorite, R.drawable.ic_heart, false, this::toggleFavSelected));
-        popup = IosMenu.show(act, anchor, menu);
+        menu.add(PullDown.action(act.getString(all ? R.string.deselect_all : R.string.select_all), R.drawable.ic_check_circle, this::selectAll));
+        if (!sel.isEmpty()) menu.add(PullDown.action(act.getString(R.string.favorite), R.drawable.ic_heart, this::toggleFavSelected));
+        popup = PullDown.show(act, anchor, menu);
     }
 
     /** Starts a swipe selection at {@code pos}: everything between the first tile and the finger is selected (or deselected). */
@@ -903,35 +909,46 @@ public class MediaGrid extends LinearLayout {
 
     // ------------------------------------------------------------------ view options dialog
 
-    private void showOptions() {
-        final LinearLayout box = Ui.box(act);
-        addChoice(box, R.string.opt_group, new int[]{R.string.opt_group_none, R.string.opt_group_day, R.string.opt_group_month},
-                Store.intPref(act, "group", 1), v -> {
-                    Store.setIntPref(act, "group", v);
-                    rebuild();
-                });
-        addChoice(box, R.string.opt_sort, new int[]{R.string.opt_sort_taken, R.string.opt_sort_added},
-                Store.intPref(act, "sort", 0), v -> {
-                    Store.setIntPref(act, "sort", v);
-                    rebuild();
-                });
-        String[] cn = {"2", "3", "4", "5", "6"};
-        box.addView(Ui.label(act, act.getString(R.string.opt_columns)));
-        final LinearLayout row = new LinearLayout(act);
-        row.setOrientation(HORIZONTAL);
-        final List<TextView> cc = new ArrayList<>();
-        for (int i = 0; i < cn.length; i++) {
-            final int val = i + 2;
-            final TextView t = Ui.chip(act, cn[i], cols == val);
-            t.setOnClickListener(v -> {
-                setCols(val);
-                for (int k = 0; k < cc.size(); k++) Ui.setChip(act, cc.get(k), k + 2 == val);
-            });
-            cc.add(t);
-            row.addView(t);
+    private void showOptions(View anchor) {
+        final List<PullDown.Row> rows = new ArrayList<>();
+        if (mode != SEARCH) {                                   // the filter chips moved into this menu
+            int[] fn = {R.string.f_all, R.string.f_photos, R.string.f_videos, R.string.f_favorites};
+            for (int i = 0; i < fn.length; i++) {
+                final int f = i;
+                rows.add(PullDown.choice(act.getString(fn[i]), filter == i, () -> setFilter(f)));
+            }
+            rows.add(PullDown.separator());
         }
-        box.addView(row);
-        new Dlg(act).setTitle(R.string.view_options).setView(box).setPositiveButton(R.string.done, null).show();
+        int[] gn = {R.string.opt_group_none, R.string.opt_group_day, R.string.opt_group_month};
+        int g = Store.intPref(act, "group", 1);
+        List<PullDown.Row> group = new ArrayList<>();
+        for (int i = 0; i < gn.length; i++) {
+            final int v = i;
+            group.add(PullDown.choice(act.getString(gn[i]), g == i, () -> {
+                Store.setIntPref(act, "group", v);
+                rebuild();
+            }).keepOpen());
+        }
+        rows.add(PullDown.sub(act.getString(R.string.opt_group), act.getString(gn[g]), group));
+        int[] sn = {R.string.opt_sort_taken, R.string.opt_sort_added};
+        int so = Store.intPref(act, "sort", 0);
+        List<PullDown.Row> sort = new ArrayList<>();
+        for (int i = 0; i < sn.length; i++) {
+            final int v = i;
+            sort.add(PullDown.choice(act.getString(sn[i]), so == i, () -> {
+                Store.setIntPref(act, "sort", v);
+                rebuild();
+            }).keepOpen());
+        }
+        rows.add(PullDown.sub(act.getString(R.string.opt_sort), act.getString(sn[so]), sort));
+        List<PullDown.Row> columns = new ArrayList<>();
+        for (int c = 2; c <= 6; c++) {
+            final int v = c;
+            columns.add(PullDown.choice(String.valueOf(c), cols == c, () -> setCols(v)).keepOpen());
+        }
+        rows.add(PullDown.sub(act.getString(R.string.opt_columns), String.valueOf(cols), columns));
+        if (popup != null && popup.isShowing()) popup.dismiss();
+        popup = PullDown.show(act, anchor, rows);
     }
 
     private interface IntCb {

@@ -2,6 +2,7 @@ package com.gallery.app;
 
 import android.view.View;
 
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 /**
@@ -36,17 +37,8 @@ final class ScrollHeader {
                 sync();
             }
         });
-        rv.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
-            @Override
-            public void onChildViewAttachedToWindow(View v) {
-                sync();
-            }
-
-            @Override
-            public void onChildViewDetachedFromWindow(View v) {
-                sync();
-            }
-        });
+        // after every layout pass (data replaced, tab shown again, rotation) re-derive the header from the list itself
+        rv.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> sync());
     }
 
     private void applyPadding() {
@@ -66,18 +58,19 @@ final class ScrollHeader {
 
     void sync() {
         int h = top.getHeight();
-        if (h <= 0) return;
+        if (h <= 0 || rv.isComputingLayout()) return;
         float ty = 0f;
         if (!pinned) {
             RecyclerView.Adapter<?> ad = rv.getAdapter();
             RecyclerView.LayoutManager lm = rv.getLayoutManager();
-            if (ad != null && lm != null && ad.getItemCount() > 0) {
-                RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(0);
-                if (vh == null) {
-                    ty = -h;
+            if (ad != null && lm instanceof LinearLayoutManager && ad.getItemCount() > 0 && lm.getChildCount() > 0) {
+                LinearLayoutManager ll = (LinearLayoutManager) lm;
+                if (ll.findFirstVisibleItemPosition() > 0) {
+                    ty = -h;                                     // scrolled well past the top
                 } else {
-                    int t = lm.getDecoratedTop(vh.itemView);
-                    ty = Math.max(-h, Math.min(0, t - h));
+                    View first = ll.findViewByPosition(0);
+                    // row 0 not laid out yet (data was just replaced): keep the header, never leave a black gap
+                    ty = first == null ? 0f : Math.max(-h, Math.min(0, lm.getDecoratedTop(first) - h));
                 }
             }
         }

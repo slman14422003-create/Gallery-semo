@@ -80,6 +80,12 @@ public class AlbumsView extends LinearLayout {
             }
         });
         rv.setLayoutManager(lm);
+        androidx.recyclerview.widget.DefaultItemAnimator ia = new androidx.recyclerview.widget.DefaultItemAnimator();
+        ia.setSupportsChangeAnimations(false);   // no cross-fade flash when a tile only changes its selection / favourite mark
+        ia.setAddDuration(240);
+        ia.setRemoveDuration(200);
+        ia.setMoveDuration(280);
+        rv.setItemAnimator(ia);
         rv.setAdapter(ad);
         rv.setClipToPadding(false);
         rv.setPadding(Ui.dp(a, 12), Ui.dp(a, 0), Ui.dp(a, 12), Ui.dp(a, 112));   // room for the floating bar
